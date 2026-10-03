@@ -1,7 +1,7 @@
 /**
- * 规则引擎测试（对齐原版 board_test.dart 的走法生成部分）。
+ * 规则引擎测试（对齐原版 board_test.dart 全部 17 用例 + 02 §2.3/§3 合法性契约）。
  * 走法生成用例走 pseudoMovesFor（这些场面均无自将干扰，pseudo == legal）；
- * 合法性过滤 / 将死 / 困毙 / 照面用例在 legalMovesFor/isCheck 落地后补齐（T1.3）。
+ * 自将过滤 / 照面 / 将死 / 困毙走 legalMovesFor 与 isCheck 系列。
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -222,5 +222,111 @@ describe('applyMove / undoMove 互逆', () => {
     board.undoMove(snapshot)
     expect(board.toFen()).toBe(fen0)
     expect(board.isRedTurn).toBe(true)
+  })
+})
+
+describe('将军 / 将死 / 困毙', () => {
+  it('将帅照面：双将同列且中间无子时双方都算被将军', () => {
+    const board = boardWith([
+      [4, 9, 'K'],
+      [4, 0, 'k']
+    ])
+    expect(board.isCheck('red')).toBe(true)
+    expect(board.isCheck('black')).toBe(true)
+  })
+
+  it('isCheck：车直面对方将算将军', () => {
+    const board = boardWith([
+      [4, 5, 'R'],
+      [4, 0, 'k'],
+      [4, 9, 'K']
+    ])
+    expect(board.isCheck('black')).toBe(true)
+  })
+
+  it('isCheckmate：经典单车将死', () => {
+    // 黑将在九宫顶角 (3,0)，红车控制第三列与第 0 行；黑方无路可逃。
+    const board = boardWith(
+      [
+        [3, 5, 'R'],
+        [0, 0, 'R'],
+        [3, 0, 'k'],
+        [4, 9, 'K']
+      ],
+      false
+    )
+    expect(board.isCheck('black')).toBe(true)
+    expect(board.isCheckmate('black')).toBe(true)
+  })
+
+  it('isStalemate：初始局面未被将军且必然有合法着法', () => {
+    const board = Board.initial()
+    expect(board.isCheck('red')).toBe(false)
+    expect(board.isStalemate('red')).toBe(false)
+  })
+
+  it('isStalemate：将+双仕+马被炮牵制构造的困毙局面（02 §3 困毙判负）', () => {
+    // 黑：将(4,0) 仕(3,0) 仕(5,0) 马(4,1)；红：炮(4,9) 兵(4,5)作炮架 帅(3,9)。
+    // 黑方：将三格被己方子占；仕唯一落点 (4,1) 被马占；马任一落点都会撤掉炮架
+    // 使红炮沿第 4 列直照黑将 → 全部非法，且黑方未被将军 → 困毙。
+    const board = Board.fromFen('3aka3/4n4/9/9/9/4P4/9/9/9/3KC4 b - - 0 1')
+    expect(board.isCheck('black')).toBe(false)
+    expect(board.isStalemate('black')).toBe(true)
+    expect(board.isCheckmate('black')).toBe(false)
+    expect(board.allLegalMoves('black')).toHaveLength(0)
+  })
+})
+
+describe('legalMovesFor（自将过滤）', () => {
+  it('非轮走方棋子返回空列表', () => {
+    const board = boardWith([
+      [4, 9, 'K'],
+      [0, 0, 'k']
+    ])
+    // 红方轮走：黑车的合法走法为空。
+    expect(board.legalMovesFor(pos(0, 0))).toHaveLength(0)
+  })
+
+  it('送将着法被过滤：炮架车不能横移离开被牵制的纵线', () => {
+    // 红车 (4,5) 在红帅 (4,9) 与黑车 (4,0) 之间，横移会暴露红帅。
+    const board = boardWith([
+      [4, 0, 'r'],
+      [4, 5, 'R'],
+      [4, 9, 'K']
+    ])
+    const moves = board.legalMovesFor(pos(4, 5))
+    // 只能沿第 4 列移动（含吃黑车 (4,0)），共 8 着。
+    expect(moves.length).toBe(8)
+    expect(moves.every((m) => m.to.col === 4)).toBe(true)
+    expect(moves.some((m) => m.to.col === 3 && m.to.row === 5)).toBe(false)
+    expect(moves.some((m) => m.to.col === 4 && m.to.row === 0)).toBe(true)
+  })
+
+  it('照面负例：双将同列无遮蔽时，同列移动被过滤、横移合法', () => {
+    const board = boardWith([
+      [4, 9, 'K'],
+      [4, 0, 'k']
+    ])
+    const moves = board.legalMovesFor(pos(4, 9))
+    // (4,8) 仍与黑将同列 → 非法；(3,9)/(5,9) 合法。
+    expect(moves.some((m) => m.to.col === 4 && m.to.row === 8)).toBe(false)
+    expect(moves.some((m) => m.to.col === 3 && m.to.row === 9)).toBe(true)
+    expect(moves.some((m) => m.to.col === 5 && m.to.row === 9)).toBe(true)
+    expect(moves.length).toBe(2)
+  })
+
+  it('照面负例：有遮蔽时同列移动合法；遮蔽子离开该列的着法全部非法', () => {
+    const board = boardWith([
+      [4, 9, 'K'],
+      [4, 0, 'k'],
+      [4, 5, 'N']
+    ])
+    // 红帅沿同列移动 OK（马仍是遮蔽）。
+    const kingMoves = board.legalMovesFor(pos(4, 9))
+    expect(kingMoves.some((m) => m.to.col === 4 && m.to.row === 8)).toBe(true)
+    expect(kingMoves.length).toBe(3)
+    // 马的任何落点都离开第 4 列 → 撤掉遮蔽 → 送将 → 全部被过滤。
+    const knightMoves = board.legalMovesFor(pos(4, 5))
+    expect(knightMoves).toHaveLength(0)
   })
 })

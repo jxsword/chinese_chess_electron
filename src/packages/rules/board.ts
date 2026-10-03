@@ -6,8 +6,8 @@
  *   （自将过滤，供 UI/清单，T1.3 落地）。
  * - 纯 TypeScript，不依赖任何环境 API，可独立单测。
  */
-import { addPos, inBoard, pos, type Position } from './position'
-import { forwardOf, type Piece, type Side } from './piece'
+import { addPos, inBoard, pos, samePos, type Position } from './position'
+import { forwardOf, opponentOf, type Piece, type Side } from './piece'
 import {
   buildFen,
   parseBoardFen,
@@ -115,6 +115,125 @@ export class Board {
     this.grid[snapshot.from.row][snapshot.from.col] = mover
     this.grid[snapshot.to.row][snapshot.to.col] = snapshot.captured ?? null
     this.redTurn = !this.redTurn
+  }
+
+  // -------------------------------------------------------------------------
+  // 合法性过滤（自将检查）与胜负判定
+  // -------------------------------------------------------------------------
+
+  /** 合法走法：过滤掉走完会自将的着法；非轮走方棋子返回空（board.dart:96-102）。 */
+  legalMovesFor(p: Position): Move[] {
+    const piece = this.pieceAtP(p)
+    if (piece === null || piece.side !== this.turn) return []
+    return this.pseudoMovesFor(p).filter((m) => !this.willBeInCheckAfter(m, piece.side))
+  }
+
+  /** 当前走子方是否还有任何合法走法（board.dart:105-119）。 */
+  hasAnyLegalMove(): boolean {
+    return this.hasAnyLegalMoveFor(this.turn)
+  }
+
+  /** 指定一方是否还有任何合法走法（不影响轮走方，board.dart:203-217）。 */
+  hasAnyLegalMoveFor(side: Side): boolean {
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = this.grid[r][c]
+        if (p !== null && p.side === side) {
+          const movable = this.pseudoMovesFor(pos(c, r)).some(
+            (m) => !this.willBeInCheckAfter(m, side)
+          )
+          if (movable) return true
+        }
+      }
+    }
+    return false
+  }
+
+  /** 某一方（默认轮走方）的全部合法着法，供金标准对拍与搜索入口（09 §2.1）。 */
+  allLegalMoves(side: Side = this.turn): Move[] {
+    const moves: Move[] = []
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = this.grid[r][c]
+        if (p === null || p.side !== side) continue
+        for (const m of this.pseudoMovesFor(pos(c, r))) {
+          if (!this.willBeInCheckAfter(m, side)) moves.push(m)
+        }
+      }
+    }
+    return moves
+  }
+
+  /** 查找某方将/帅位置；无将返回 null（board.dart:146-156）。 */
+  kingPositionOf(side: Side): Position | null {
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = this.grid[r][c]
+        if (p !== null && p.kind === 'king' && p.side === side) return pos(c, r)
+      }
+    }
+    return null
+  }
+
+  /**
+   * side 方的将是否正被将军（board.dart:159-188）。
+   * ① 将帅照面：同列且中间无子 → 视为被将军（等效禁止照面）；
+   * ② 任意对方棋子（伪合法）可吃到本方将位。
+   */
+  isCheck(side: Side): boolean {
+    const kingPos = this.kingPositionOf(side)
+    if (kingPos === null) return false
+    // ① 照面判定（board.dart:163-175）。
+    const enemyKing = this.kingPositionOf(opponentOf(side))
+    if (enemyKing !== null && enemyKing.col === kingPos.col) {
+      const lo = Math.min(kingPos.row, enemyKing.row)
+      const hi = Math.max(kingPos.row, enemyKing.row)
+      let blocked = false
+      for (let r = lo + 1; r < hi; r++) {
+        if (this.grid[r][kingPos.col] !== null) {
+          blocked = true
+          break
+        }
+      }
+      if (!blocked) return true
+    }
+    // ② 对方棋子可达本方将位（board.dart:177-186）。
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = this.grid[r][c]
+        if (p !== null && p.side === opponentOf(side)) {
+          if (this.pseudoMovesFor(pos(c, r)).some((m) => samePos(m.to, kingPos))) {
+            return true
+          }
+        }
+      }
+    }
+    return false
+  }
+
+  /** side 方是否被将死（被将军且无任何合法走法，board.dart:191-194）。 */
+  isCheckmate(side: Side): boolean {
+    if (!this.isCheck(side)) return false
+    return !this.hasAnyLegalMoveFor(side)
+  }
+
+  /** side 方是否被困毙（未被将军但无任何合法走法，判负；board.dart:197-200）。 */
+  isStalemate(side: Side): boolean {
+    if (this.isCheck(side)) return false
+    return !this.hasAnyLegalMoveFor(side)
+  }
+
+  /** 模拟执行走子后自己是否处于被将军状态（原地模拟+还原，不改轮走方，board.dart:220-230）。 */
+  private willBeInCheckAfter(move: Move, side: Side): boolean {
+    const captured = this.pieceAtP(move.to)
+    const mover = this.pieceAtP(move.from)!
+    this.grid[move.to.row][move.to.col] = mover
+    this.grid[move.from.row][move.from.col] = null
+    const inCheck = this.isCheck(side)
+    // 还原。
+    this.grid[move.from.row][move.from.col] = mover
+    this.grid[move.to.row][move.to.col] = captured
+    return inCheck
   }
 
   // -------------------------------------------------------------------------
