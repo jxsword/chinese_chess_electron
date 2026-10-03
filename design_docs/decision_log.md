@@ -53,3 +53,34 @@
 - 理由: 主进程与测试共用同一 ABI 消除"装完能测、一跑就崩"的经典坑；B 的复杂度换不来实际收益；打包（T7.2）本就要求 electron-rebuild，与其一致。
 - 影响: package.json（scripts.test/postinstall、devDependencies.@electron/rebuild）、tools/run-vitest.mjs、CI 矩阵（M7）；M2 其余实现期微决策一并记录：①credentials.enc 文件格式 = JSON `{槽位: base64(密文)}`（07 §4 未定文件内布局）；②主进程→渲染层生命周期分发用模块级回调注册表（仅持有注销函数，不持对局状态，不违铁律 #6）；③走子动画权威结束信号 = 与 CSS transition(220ms easeOutCubic) 并行的 220ms 定时器（jsdom 可测，transitionend 不可靠）；④棋谱来源（initialFen 续战）的"保存棋局"手动按钮同样受 canSave=false 约束（对齐 08 §7 防错 #6，较原版页面直写更严）；⑤数据库文件名固定 `chinese_chess_electron.sqlite`（07 §1 留白的改名决策：不做改名设置，保持实现最简）。
 - 记录时间 / 会话: 2026-10-04（M2 会话）
+
+## DR-007 2026-10-04 引擎内部棋盘表示采用 Int8Array(90)+整数打包走法 [状态: 生效]
+- 背景: T3.1 落地 03 §8"Int8Array 替代 Dart 二维数组"的性能注意。需决定引擎内部是否复用 rules.Board 对象图（Piece 对象 + 二维数组）还是自建整数编码层。
+- 选项:
+  - A. 引擎内部自建 Int8Array(90) + 棋子整数编码（正红负黑 1..7）+ packed 整数走法（位段: 排序等级|captured|to|from）——优点: copy=零分配、apply/undo 栈式回退零对象、走法生成/排序零分配（TypedArray.sort），是拿回性能的最大单项（03 §8 明示）；缺点: 与 rules.Board 需一层对拍锁定语义等价。
+  - B. 直接复用 rules.Board 跑搜索——优点: 单一事实源零对拍成本; 缺点: 每节点大量对象分配（Move/Piece/数组），JS GC 压力下深层搜索预计慢数倍，性能门（难度5 ≤7.5s）风险高。
+- 结论: 方案 A。语义等价由 test/engine/engineBoard.spec.ts 对拍锁定（走法集合/apply-undo 往返/isCheck/评估逐项）。
+- 理由: 03 §8 将该表示列为"TS 下拿回性能的最大单项"；实测性能门 2.3s（门 7.5s），且 isCheck 反向探测（车炮直线/马位反查/兵/照面，士象因活动范围攻击不到敌方九宫而免检）判定集与 rules 版等价。
+- 影响: src/packages/engine/engineBoard.ts、search.ts；金标准对拍口径（tools/golden/engine.json）。
+- 记录时间 / 会话: 2026-10-04（M3 会话）
+
+## DR-008 2026-10-04 MVV-LVA 排序键内嵌 packed 走法高位 [状态: 生效]
+- 背景: Dart 版走法排序用 (move, key) 对象数组 + List.sort（不稳定排序）；TS 需决定排序实现与同分语义。
+- 选项:
+  - A. 排序等级压缩映射（Dart key=victim×10−attacker 全集降序去重 → 6bit 等级）内嵌 packed 高位，TypedArray 数值升序 + 正序遍历——优点: 零比较器零分配、顺序完全确定、与 Dart 排序键数值序一致; 缺点: 需保证等级映射单调（已用例锁定）。
+  - B. 平行 key 数组 + 比较器 sort——优点: 直白; 缺点: 每节点比较器调用/闭包开销，热路径劣化。
+- 结论: 方案 A。附带修复: 三处递归（negamax/quiescence/evasions）曾漏排序与方向写反（倒序遍历=最差着法优先），导致深层剪枝崩坏、TS 深度6超 60s deadline 截断而与 Dart 完整层分数分歧；正序修复后 midgame d6 2.4s（Dart 25.5s 的 1/10）且金标准全绿。
+- 理由: 根节点全窗口下分数是精确 minimax 值（与走法顺序无关，跨语言可复现），但搜索效率完全依赖排序质量；同分着法间顺序 Dart 不稳定排序本就不可复现，对拍以分数序列+逐着法分数为准。
+- 影响: src/packages/engine/search.ts；09 §2.2 对拍断言口径说明（spec 注释）。
+- 记录时间 / 会话: 2026-10-04（M3 会话）
+
+## DR-009 2026-10-04 Worker 取消以渲染层丢弃语义收口，同步搜索不中断 [状态: 生效]
+- 背景: 03 §6 要求"搜索循环每 64 节点检查取消标志"。engine.worker 内搜索是同步计算，单线程 Worker 在计算期间收不到 cancel 消息；真正中断需 SharedArrayBuffer（Electron 默认非 crossOriginIsolated，不可用）或 worker 套 worker terminate。
+- 选项:
+  - A. 渲染层丢弃收口：client.cancel 立即以 canceled 结算并移出 pending（迟到响应按 id 丢弃），worker 端保留"排队请求取消"防御检查 + shouldAbort 探针全链路接通（机制在，同步模型下标志在搜索期间不变），长搜索由 deadline（≤5s）兜底——优点: 与 00 §3.2 主语义（丢弃在渲染层收口，等价 _gameSeq）及原版 Isolate.run 行为（同样不可中断）一致；缺点: 已开始的搜索会跑满到 deadline。
+  - B. SharedArrayBuffer + Atomics 标志——优点: 真 64 节点粒度中断; 缺点: 需 COOP/COEP 头隔离整个渲染进程，兼容性风险大。
+  - C. worker 内 spawn 子 worker 搜索、cancel 时 terminate——优点: 真中断; 缺点: worker 套 worker 打包/协议透传复杂度高，M3 收益比低。
+- 结论: 方案 A。09 §2.4 验收口径"取消（cancel 后响应 discarded）"由 client 侧满足；若 M4 参谋链需要真中断再评估方案 C。
+- 理由: 原版 Isolate.run 同样不可中断且体验达标；05 §5 参谋报告 timeLimit ≤5s 使最坏延迟有界。
+- 影响: src/renderer/workers/engineProtocol.ts、engineClient.ts、HumanVsAiPage 的 gameSeq 作废逻辑；M4 HybridLlmPlayer。
+- 记录时间 / 会话: 2026-10-04（M3 会话）
