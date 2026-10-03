@@ -34,6 +34,8 @@ export interface EngineReport {
 export interface FindBestMoveOptions {
   /** 难度 1-5（初级-大师），越界取 clamp（Dart 同语义）。 */
   difficulty?: number
+  /** 取消探针：与 deadline 同节奏（每 64 节点）轮询（03 §6）。 */
+  shouldAbort?: () => boolean
 }
 
 export interface FindBestMoveExOptions {
@@ -43,11 +45,15 @@ export interface FindBestMoveExOptions {
   topK?: number
   /** 时间上限（毫秒）。 */
   timeLimitMs?: number
+  /** 取消探针：与 deadline 同节奏（每 64 节点）轮询（03 §6）。 */
+  shouldAbort?: () => boolean
 }
 
 export interface EvaluateMoveOptions {
   /** 对手视角搜索深度，1-6。 */
   depth?: number
+  /** 取消探针：与 deadline 同节奏（每 64 节点）轮询（03 §6）。 */
+  shouldAbort?: () => boolean
 }
 
 /** 接受规则层 Board 实例或 FEN 字符串（Worker 协议传 FEN，天然可结构化克隆）。 */
@@ -71,7 +77,8 @@ export function findBestMove(board: EngineInput, options: FindBestMoveOptions = 
   const search = new Search(EngineBoard.fromFen(fen), {
     maxDepth: params.depth,
     deadlineMs: Date.now() + params.timeMs,
-    randomness: params.randomness
+    randomness: params.randomness,
+    shouldAbort: options.shouldAbort
   })
   const best = search.run()
   return best === null ? null : packedToMove(best)
@@ -91,7 +98,8 @@ export function findBestMoveEx(
   const search = new Search(EngineBoard.fromFen(fen), {
     maxDepth: clampInt(depth, 1, 8),
     deadlineMs: Date.now() + timeLimitMs,
-    randomness: 0
+    randomness: 0,
+    shouldAbort: options.shouldAbort
   })
   const scored = search.runScored()
   if (scored.length === 0) return null
@@ -132,7 +140,8 @@ export function evaluateMove(
   const scored = new Search(probe, {
     maxDepth: clampInt(depth, 1, 6),
     deadlineMs: Date.now() + 2000,
-    randomness: 0
+    randomness: 0,
+    shouldAbort: options.shouldAbort
   }).runScored()
   if (scored.length === 0) return MATE_SCORE // 走完后对手被将死/困毙
   let bestOpp = -Number.MAX_SAFE_INTEGER
