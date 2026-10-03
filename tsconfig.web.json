@@ -8,6 +8,7 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
-    "src/packages/**/*.ts"
+    "src/packages/**/*.ts",
+    "test/**/*.tsx"
   ]
 }
