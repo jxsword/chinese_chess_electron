@@ -1,10 +1,13 @@
 import { mkdirSync } from 'fs'
 import { join } from 'path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, safeStorage } from 'electron'
 import { registerDbIpc } from './ipc/db'
+import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { openDao, type ChessDao } from './services/db'
+import { SettingsService } from './services/settings'
+import { CredentialsService, safeStorageCryptor } from './services/credentials'
 
-// M2：业务 IPC（cc:db:*）接入。设置/凭据（cc:store/secure）与生命周期事件在 T2.2/T2.5 接入。
+// M2：业务 IPC（cc:db/store/secure）接入。生命周期事件（cc:app:lifecycle）在 T2.5 接入。
 
 /** 打开数据库（07 §1：documents/chinese_chess_electron.sqlite）；失败由调用方降级 */
 function openDatabase(): ChessDao {
@@ -48,6 +51,14 @@ app.whenReady().then(() => {
     if (dao === null) dao = openDatabase()
     return dao
   })
+
+  registerStoreIpc(new SettingsService({ cwd: app.getPath('userData') }))
+  registerSecureIpc(
+    new CredentialsService(
+      safeStorageCryptor(safeStorage),
+      join(app.getPath('userData'), 'credentials.enc')
+    )
+  )
 
   createWindow()
 
