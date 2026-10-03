@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'm*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-gate:
+    name: lint + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      # M0~M6 CI 只做 eslint/tsc/vitest，无需 Electron 二进制，跳过下载加速 CI；
+      # M7 打包任务（T7.2）引入 electron-builder 矩阵时移除本变量。
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
