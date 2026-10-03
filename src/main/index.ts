@@ -5,12 +5,17 @@ import { CC } from '@shared/ipc/channels'
 import type { AppLifecyclePhase } from '@shared/ipc/types'
 import { registerDbIpc } from './ipc/db'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
+import { registerClipboardIpc } from './ipc/clipboard'
 import { openDao, type ChessDao } from './services/db'
 import { SettingsService } from './services/settings'
 import { CredentialsService, safeStorageCryptor } from './services/credentials'
 
-// M2：业务 IPC（cc:db/store/secure/app:lifecycle）接入。
+// M2：业务 IPC（cc:db/store/secure/clipboard/app:lifecycle）接入。
 // 生命周期映射（07 §2）：窗口 blur/minimize/close + before-quit → 渲染层自动保存。
+
+// WSLg/ANGLE D3D12 下 Chromium GPU 进程会因 Skia OOM 反复崩溃（整屏黑闪后恢复，
+// 路线图风险 R7）；棋盘 UI 无需 GPU 加速，恒用软件渲染消除该类故障。
+app.disableHardwareAcceleration()
 
 /** 单窗口生命周期事件广播（best-effort：send 即返回，不阻塞退出） */
 function sendLifecycle(win: BrowserWindow, phase: AppLifecyclePhase): void {
@@ -74,6 +79,7 @@ app.whenReady().then(() => {
       join(app.getPath('userData'), 'credentials.enc')
     )
   )
+  registerClipboardIpc()
 
   createWindow()
 

@@ -124,11 +124,17 @@ export function HumanVsHumanPage(): React.JSX.Element {
       moves: state.moveHistory,
       result
     })
+    let text: string
     try {
-      void api.clipboard.write(writeShareText(record)).then(() => showToast('棋谱文本已复制到剪贴板'))
+      text = writeShareText(record)
     } catch {
       showToast('分享失败：棋谱生成异常')
+      return
     }
+    api.clipboard
+      .write(text)
+      .then(() => showToast('棋谱文本已复制到剪贴板'))
+      .catch(() => showToast('分享失败：剪贴板不可用'))
   }
 
   // 页面信息区订阅（BoardView 内部自行订阅棋盘状态）
