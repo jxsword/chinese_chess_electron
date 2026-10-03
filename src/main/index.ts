@@ -1,13 +1,27 @@
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 import { app, BrowserWindow, safeStorage } from 'electron'
+import { CC } from '@shared/ipc/channels'
+import type { AppLifecyclePhase } from '@shared/ipc/types'
 import { registerDbIpc } from './ipc/db'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { openDao, type ChessDao } from './services/db'
 import { SettingsService } from './services/settings'
 import { CredentialsService, safeStorageCryptor } from './services/credentials'
 
-// M2：业务 IPC（cc:db/store/secure）接入。生命周期事件（cc:app:lifecycle）在 T2.5 接入。
+// M2：业务 IPC（cc:db/store/secure/app:lifecycle）接入。
+// 生命周期映射（07 §2）：窗口 blur/minimize/close + before-quit → 渲染层自动保存。
+
+/** 单窗口生命周期事件广播（best-effort：send 即返回，不阻塞退出） */
+function sendLifecycle(win: BrowserWindow, phase: AppLifecyclePhase): void {
+  if (!win.isDestroyed()) win.webContents.send(CC.app.lifecycle, { phase })
+}
+
+function wireWindowLifecycle(win: BrowserWindow): void {
+  win.on('blur', () => sendLifecycle(win, 'blur'))
+  win.on('minimize', () => sendLifecycle(win, 'minimize'))
+  win.on('close', () => sendLifecycle(win, 'close'))
+}
 
 /** 打开数据库（07 §1：documents/chinese_chess_electron.sqlite）；失败由调用方降级 */
 function openDatabase(): ChessDao {
@@ -33,6 +47,7 @@ function createWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+  wireWindowLifecycle(win)
 
   // electron-vite dev 注入 ELECTRON_RENDERER_URL；生产加载构建产物
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -65,6 +80,11 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// 进程退出（07 §2：同步 best-effort 写入）
+app.on('before-quit', () => {
+  for (const win of BrowserWindow.getAllWindows()) sendLifecycle(win, 'before-quit')
 })
 
 // 桌面应用语义：关窗即退出（与 Flutter 版一致，darwin 亦不驻留）

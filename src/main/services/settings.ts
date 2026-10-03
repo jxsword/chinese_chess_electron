@@ -5,6 +5,7 @@
  * electron-store 仅主进程使用（Node API）；测试经 cwd 注入临时目录。
  */
 import Store from 'electron-store'
+import { SETTING_KEYS } from '@shared/constants'
 
 export interface SettingsOptions {
   /** 存放目录（主进程传 userData；测试传临时目录） */
@@ -12,8 +13,6 @@ export interface SettingsOptions {
   /** 文件名（默认 settings.json） */
   name?: string
 }
-
-export const GLOBAL_AUTO_SAVE_KEY = 'global_auto_save'
 
 export class SettingsService {
   private readonly store: Store<Record<string, unknown>>
@@ -23,7 +22,7 @@ export class SettingsService {
       name: options.name ?? 'settings',
       cwd: options.cwd,
       // 07 §3 默认值：自动保存开关默认开
-      defaults: { [GLOBAL_AUTO_SAVE_KEY]: true }
+      defaults: { [SETTING_KEYS.globalAutoSave]: true }
     })
   }
 
