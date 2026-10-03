@@ -2,7 +2,7 @@
 
 中国象棋桌面应用——Flutter 版（ChineseChessUltra，五期全部交付）的 Electron 全栈重写。
 
-> 当前状态：**开发中**。全套设计文档见 [design_docs/](design_docs/)，里程碑从 M0 起步（M0 工程骨架、M1 规则内核已交付）。
+> 当前状态：**开发中**。全套设计文档见 [design_docs/](design_docs/)，里程碑从 M0 起步（M0 工程骨架、M1 规则内核、M2 对战页+存储已交付）。
 
 ## 功能总览（目标对齐 Flutter 版全部功能）
 
@@ -24,7 +24,7 @@
 | 存储 | better-sqlite3 + electron-store + Electron safeStorage |
 | 测试 | Vitest + Playwright |
 
-技术选型决策记录：[design_docs/decision_log.md](design_docs/decision_log.md)（DR-001~004）。
+技术选型决策记录：[design_docs/decision_log.md](design_docs/decision_log.md)（DR-001~006）。
 
 ## 仓库结构
 
@@ -74,7 +74,7 @@ npm run lint       # eslint + tsc --noEmit
 |---|---|---|
 | M0 | 工程骨架 | ✅ 完成（v0.1.0-m0） |
 | M1 | 规则内核 | ✅ 完成（v0.2.0-m1） |
-| M2 | 对战页 + 存储 | 未开始 |
+| M2 | 对战页 + 存储 | ✅ 完成（v0.3.0-m2） |
 | M3 | 引擎 + Worker | 未开始 |
 | M4 | LLM 全链路 | 未开始 |
 | M5 | 语料 + 棋谱 | 未开始 |

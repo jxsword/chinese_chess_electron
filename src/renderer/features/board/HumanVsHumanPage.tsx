@@ -6,7 +6,7 @@
  * 每次进入页面创建独立 store 实例，离开销毁并触发离开保存（铁律 #6 + 07 §2）。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import { createGameStore } from '@renderer/stores/createGameStore'
 import { GameAutoSave } from '@renderer/stores/gameAutoSave'
@@ -35,6 +35,7 @@ function formatTime(seconds: number): string {
 
 export function HumanVsHumanPage(): React.JSX.Element {
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const initialFen = params.get('fen') ?? undefined
 
   // 每局一实例：进入页面创建，离开丢弃（铁律 #6）
@@ -139,6 +140,9 @@ export function HumanVsHumanPage(): React.JSX.Element {
   return (
     <div className="cc-game-page">
       <header className="cc-game-header">
+        <button type="button" className="cc-btn" onClick={() => navigate(-1)} aria-label="返回">
+          返回
+        </button>
         <h2>{initialFen === undefined ? '双人对弈' : '双人对弈（棋谱续战）'}</h2>
         <button type="button" className="cc-btn" onClick={() => setConfirmingNewGame(true)}>
           新游戏

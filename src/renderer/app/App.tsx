@@ -34,9 +34,21 @@ function PlaceholderPage({ title, milestone }: { title: string; milestone: strin
   )
 }
 
+/**
+ * 初始路由：内存路由默认主页；dev:web/深链场景支持 `?fen=` 直达棋谱续战
+ * （对齐 record_battle_launcher 的 initialFen 入口参数，M5 棋谱库将改为路由跳转传参）。
+ * Electron 生产加载 index.html 无 query，恒为 '/'。
+ */
+function initialRoute(): string {
+  if (typeof window === 'undefined') return '/'
+  const search = window.location.search
+  if (search.includes('fen=')) return `/human-vs-human${search}`
+  return '/'
+}
+
 export default function App(): React.JSX.Element {
   return (
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[initialRoute()]}>
       <LifecycleBridge />
       <Routes>
         <Route path="/" element={<HomePage />} />
