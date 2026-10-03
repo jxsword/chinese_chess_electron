@@ -210,8 +210,10 @@ export class Search {
     const buf = this.moveBufs
     const base = ply * MOVE_STRIDE
     const n = b.generateMoves(buf, base, false)
+    // MVV-LVA：等级在 packed 高位，段内升序排后倒序遍历即等级降序（吃大子优先）。
+    buf.subarray(base, base + n).sort()
     let anyLegal = false
-    for (let i = n - 1; i >= 0; i--) {
+    for (let i = 0; i < n; i++) {
       // 升序排后倒序遍历 = 等级降序（MVV-LVA，吃大子优先）。
       const move = buf[base + i]
       const from = move & PACK_FROM_MASK
@@ -254,7 +256,8 @@ export class Search {
     const buf = this.moveBufs
     const base = ply * MOVE_STRIDE
     const n = b.generateMoves(buf, base, true)
-    for (let i = n - 1; i >= 0; i--) {
+    buf.subarray(base, base + n).sort() // MVV-LVA（吃大子优先）
+    for (let i = 0; i < n; i++) {
       const move = buf[base + i]
       const from = move & PACK_FROM_MASK
       const to = (move >>> PACK_TO_SHIFT) & PACK_FROM_MASK
@@ -277,8 +280,9 @@ export class Search {
     const buf = this.moveBufs
     const base = ply * MOVE_STRIDE
     const n = b.generateMoves(buf, base, false)
+    buf.subarray(base, base + n).sort() // MVV-LVA（吃大子优先）
     let anyLegal = false
-    for (let i = n - 1; i >= 0; i--) {
+    for (let i = 0; i < n; i++) {
       const move = buf[base + i]
       const from = move & PACK_FROM_MASK
       const to = (move >>> PACK_TO_SHIFT) & PACK_FROM_MASK

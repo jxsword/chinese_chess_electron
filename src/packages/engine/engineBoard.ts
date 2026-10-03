@@ -442,7 +442,7 @@ export class EngineBoard {
     const buf = new Int32Array(32)
     const n = this.generateMovesFor(buf, 0, from, false)
     for (let i = 0; i < n; i++) {
-      if ((buf[i] & PACK_FROM_MASK) === to) return true
+      if (((buf[i] >>> PACK_TO_SHIFT) & PACK_FROM_MASK) === to) return true
     }
     return false
   }

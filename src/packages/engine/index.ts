@@ -21,3 +21,10 @@ export {
   type ScoredMove,
   type SearchConfig
 } from './search'
+export {
+  findBestMove,
+  findBestMoveEx,
+  evaluateMove,
+  type EngineReport,
+  type EngineInput
+} from './chessAi'
