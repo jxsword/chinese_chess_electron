@@ -28,3 +28,8 @@ export {
   type EngineReport,
   type EngineInput
 } from './chessAi'
+export type {
+  MoveSource,
+  MoveSourceResult,
+  MoveSourceStatus
+} from './moveSource'
