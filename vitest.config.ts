@@ -5,13 +5,14 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     alias: {
+      '@main': resolve('src/main'),
       '@shared': resolve('src/shared'),
       '@renderer': resolve('src/renderer'),
       '@packages': resolve('src/packages')
     }
   },
   test: {
-    include: ['test/**/*.spec.ts'],
+    include: ['test/**/*.spec.{ts,tsx}'],
     environment: 'node',
     passWithNoTests: true
   }

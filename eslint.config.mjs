@@ -21,9 +21,13 @@ export default tseslint.config(
       'src/main/**/*.ts',
       'src/shared/**/*.ts',
       'src/packages/**/*.ts',
-      'test/**/*.ts',
+      'test/**/*.{ts,tsx}',
       '*.config.ts'
     ],
+    languageOptions: { globals: { ...globals.node } }
+  },
+  {
+    files: ['tools/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } }
   },
   {

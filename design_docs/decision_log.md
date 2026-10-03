@@ -41,3 +41,15 @@
 - 理由: 00 §3.2 把"迟到响应丢弃"定为渲染层收口，事件单信源让该收口唯一；B 的双信源在 M4 重试/降级场景是缺陷温床。
 - 影响: src/shared/ipc/api.ts（JSDoc 契约）、test/ipc/contract.spec.ts、M4 LlmPlayer/HybridLlmPlayer 的取消与错误处理实现。
 - 记录时间 / 会话: 2026-10-03（M0 会话）
+
+## DR-006 2026-10-04 M2 依赖落地与 better-sqlite3 双 ABI 策略 [状态: 生效]
+- 背景: M2（T2.1~T2.6）需引入设计文档已定稿的依赖（better-sqlite3/electron-store/Zustand/React Router 内存路由 + 测试用 Testing Library/jsdom，出处 00 §1.1/§4、07 §3/§6、08 §1、09 §1）。工程上出现一个 M0 未暴露的问题：better-sqlite3 原生二进制按安装时的 Node ABI 编译，而 Electron 44 主进程要求自己的 NODE_MODULE_VERSION，同一份 node_modules 无法同时服务 Vitest（系统 Node）与 npm run dev（Electron）。
+- 选项:
+  - A. 统一 Electron ABI + Vitest 跑在 Electron 的 Node 下（`ELECTRON_RUN_AS_NODE=1 electron vitest`）——优点：单一二进制、dev/test/pack 三态一致、无切换脚本；缺点：npm test 依赖 electron 安装、CI 三平台需各装构建链。已实测：单套件与将来的集成测试均正常运行。
+  - B. 双二进制共存 + 运行时按 process.versions.electron 选择加载路径（postinstall 同时构建 node/electron 两份）——优点：Vitest 保持纯 Node；缺点：自定义 loader + postinstall 复杂度高，两份二进制易失步。
+  - C. 每次切换手跑 electron-rebuild / npm rebuild——优点：零基建；缺点：重建 ~1 分钟且极易忘，属缺陷温床，弃用。
+  - D. 改用 node:sqlite 或 sql.js——违反 00 §1.1 选型定稿，弃用。
+- 结论: 方案 A。`npm test` 经 tools/run-vitest.mjs 以 ELECTRON_RUN_AS_NODE 拉起 vitest；postinstall 自动 `electron-rebuild -w better-sqlite3`（失败仅告警不阻断安装）。
+- 理由: 主进程与测试共用同一 ABI 消除"装完能测、一跑就崩"的经典坑；B 的复杂度换不来实际收益；打包（T7.2）本就要求 electron-rebuild，与其一致。
+- 影响: package.json（scripts.test/postinstall、devDependencies.@electron/rebuild）、tools/run-vitest.mjs、CI 矩阵（M7）；M2 其余实现期微决策一并记录：①credentials.enc 文件格式 = JSON `{槽位: base64(密文)}`（07 §4 未定文件内布局）；②主进程→渲染层生命周期分发用模块级回调注册表（仅持有注销函数，不持对局状态，不违铁律 #6）；③走子动画权威结束信号 = 与 CSS transition(220ms easeOutCubic) 并行的 220ms 定时器（jsdom 可测，transitionend 不可靠）；④棋谱来源（initialFen 续战）的"保存棋局"手动按钮同样受 canSave=false 约束（对齐 08 §7 防错 #6，较原版页面直写更严）；⑤数据库文件名固定 `chinese_chess_electron.sqlite`（07 §1 留白的改名决策：不做改名设置，保持实现最简）。
+- 记录时间 / 会话: 2026-10-04（M2 会话）

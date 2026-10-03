@@ -1,13 +1,23 @@
+import { mkdirSync } from 'fs'
 import { join } from 'path'
 import { app, BrowserWindow } from 'electron'
+import { registerDbIpc } from './ipc/db'
+import { openDao, type ChessDao } from './services/db'
 
-// M0 工程骨架：空窗口 + 00 文档 §5 安全基线。业务 IPC（cc:*）自 T0.2/M2 起接入。
+// M2：业务 IPC（cc:db:*）接入。设置/凭据（cc:store/secure）与生命周期事件在 T2.2/T2.5 接入。
+
+/** 打开数据库（07 §1：documents/chinese_chess_electron.sqlite）；失败由调用方降级 */
+function openDatabase(): ChessDao {
+  const dir = app.getPath('documents')
+  mkdirSync(dir, { recursive: true })
+  return openDao(join(dir, 'chinese_chess_electron.sqlite'))
+}
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    title: '中国象棋',
+    width: 1100,
+    height: 760,
+    title: '中国象棋 Ultra',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -32,6 +42,13 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // 懒打开：磁盘异常时 invoke 拒绝，渲染层按"本地存储不可用"降级（新局兜底）
+  let dao: ChessDao | null = null
+  registerDbIpc(() => {
+    if (dao === null) dao = openDatabase()
+    return dao
+  })
+
   createWindow()
 
   app.on('activate', () => {
