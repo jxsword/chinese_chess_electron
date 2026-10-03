@@ -31,3 +31,13 @@
 - 理由: 与安全清单（00 §5）一致：Key 与外呼全部收敛在主进程，渲染层保持零外网能力。
 - 影响: main/services/llm-proxy.ts、vision.ts、downloader.ts；05 文档 §3。
 - 记录时间 / 会话: 2026-10-03
+
+## DR-005 2026-10-03 cc:llm:chat 的 invoke/事件语义拆分 [状态: 生效]
+- 背景: 00 §3.1 定义 `cc:llm:chat` 为 "invoke + 事件流"，但 invoke promise 与 chunk/done/error 事件的分工未在文档中显式规定；M0 T0.2 落地 WindowApi 契约时必须定死，M4 的 LlmPlayer 重试/降级逻辑依赖该语义。
+- 选项与权衡:
+  - A. invoke 恒 resolve(void)，一切结局走事件（chunk 增量、done 正常结束、error 失败；cancel 后无任何事件）——优点：渲染层单一代码路径、取消后无未处理 rejection、与"迟到丢弃在 store 收口"（00 §3.2）天然对齐；缺点：invoke 返回值无信息量，错误不能直接 try/catch。
+  - B. invoke 承载最终结果（成功 resolve 全文、失败 reject、取消 reject 'cancelled'）并保留事件仅传增量——优点：符合 invoke 直觉、可用 try/catch；缺点：错误双重信源（error 事件 vs reject）需在 store 里去重，取消路径易产生 unhandled rejection（对齐原版 _gameSeq 丢弃语义时是负担当）。
+- 结论: 方案 A（已在 T0.2 实现并由 contract 测试锁定：取消后事件严格为零）。
+- 理由: 00 §3.2 把"迟到响应丢弃"定为渲染层收口，事件单信源让该收口唯一；B 的双信源在 M4 重试/降级场景是缺陷温床。
+- 影响: src/shared/ipc/api.ts（JSDoc 契约）、test/ipc/contract.spec.ts、M4 LlmPlayer/HybridLlmPlayer 的取消与错误处理实现。
+- 记录时间 / 会话: 2026-10-03（M0 会话）
