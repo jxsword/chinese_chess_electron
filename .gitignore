@@ -128,6 +128,7 @@ Thumbs.db
 # =====================
 node_modules/
 dist/
+dist-web/
 dist-electron/
 out/
 release/
