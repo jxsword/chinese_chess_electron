@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import { opponentOf, type Side } from '@packages/rules'
-import type { MoveSource, MoveSourceResult } from '@packages/engine'
+import type { MoveSourceResult } from '@packages/engine'
 import { createGameStore } from '@renderer/stores/createGameStore'
 import { GameAutoSave } from '@renderer/stores/gameAutoSave'
 import { restoreOrNewGame } from '@renderer/stores/gameRestore'
@@ -314,10 +314,7 @@ export function HumanVsAiPage(): React.JSX.Element {
             <div className="cc-section-title">游戏信息</div>
             <div>当前回合：{isRedTurn ? '红方' : '黑方'}</div>
             <div className="cc-section-title">对手</div>
-            <div data-testid="ai-display-name">
-              {(playerRef.current as MoveSource | null)?.displayName ??
-                `内置 AI（${difficultyName(difficulty)}）`}
-            </div>
+            <div data-testid="ai-display-name">{`内置 AI（${difficultyName(difficulty)}）`}</div>
           </div>
         </div>
       </div>
