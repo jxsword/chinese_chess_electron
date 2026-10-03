@@ -5,3 +5,4 @@
 export * from './moveStack'
 export * from './recordMoves'
 export * from './gameRecord'
+export * from './shareText'

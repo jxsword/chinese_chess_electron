@@ -1,0 +1,34 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`writeShareText 快照（pgn_writer.dart:53-97） > 对局类：标题/模式/结果/中文记谱两列 1`] = `
+"【中国象棋 Ultra 棋谱】示例对局
+模式: 双人对弈
+结果: 红方胜
+着法（中文记谱）:
+1. 炮二平五  马8进7"
+`;
+
+exports[`writeShareText 快照（pgn_writer.dart:53-97） > 无解/超时的求解结论行 1`] = `
+"【中国象棋 Ultra 棋谱】无解局
+模式: 残局破解
+起始 FEN: 4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1
+求解结论: 无解（深度上界内已证明）"
+`;
+
+exports[`writeShareText 快照（pgn_writer.dart:53-97） > 无解/超时的求解结论行 2`] = `
+"【中国象棋 Ultra 棋谱】无解局
+模式: 残局破解
+起始 FEN: 4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1
+求解结论: 限时内未找到解法"
+`;
+
+exports[`writeShareText 快照（pgn_writer.dart:53-97） > 残局类：起始 FEN/解法/唯一解标注/llmNote/备注 1`] = `
+"【中国象棋 Ultra 棋谱】双车残局
+模式: 残局破解
+起始 FEN: 3k5/9/9/9/9/9/9/9/9/4K4 w - - 0 1
+备注: 经典双车残局
+破解之法（2 条）:
+解法1: h5h3
+解法2: h5h4 h0g2
+大模型注释: 大模型首选 h5h3（已验证为必胜着法）"
+`;
