@@ -2,7 +2,7 @@
 
 中国象棋桌面应用——Flutter 版（ChineseChessUltra，五期全部交付）的 Electron 全栈重写。
 
-> 当前状态：**设计阶段**（v0.x 前基线）。全套设计文档见 [design_docs/](design_docs/)，开发尚未开始，里程碑从 M0 起步。
+> 当前状态：**开发中**。全套设计文档见 [design_docs/](design_docs/)，里程碑从 M0 起步（M0 工程骨架已交付）。
 
 ## 功能总览（目标对齐 Flutter 版全部功能）
 
@@ -72,7 +72,7 @@ npm run lint       # eslint + tsc --noEmit
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M0 | 工程骨架 | 未开始 |
+| M0 | 工程骨架 | ✅ 完成（v0.1.0-m0） |
 | M1 | 规则内核 | 未开始 |
 | M2 | 对战页 + 存储 | 未开始 |
 | M3 | 引擎 + Worker | 未开始 |
