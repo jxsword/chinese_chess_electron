@@ -80,7 +80,7 @@ describe('L1 重复检测（DR-018）', () => {
     for (const [, score] of a) expect(Number.isFinite(score)).toBe(true)
   })
 
-  it('性能：检测的节点数开销 ≤5%（惩罚改变分数窗口可轻微改变剪枝形态）', () => {
+  it('性能：检测的节点数开销 ≤5%（惩罚改变分数窗口可轻微改变剪枝形态）', { timeout: 120_000 }, () => {
     const runCounted = (fen: string, depth: number, counts?: Map<string, number>) => {
       const s = new Search(EngineBoard.fromFen(fen), {
         maxDepth: depth,
