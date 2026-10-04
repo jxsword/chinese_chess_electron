@@ -3,6 +3,7 @@
  * 下载（download/progress）在 corpusDownloader.ts（T5.5）；本文件只做扫描与读取。
  */
 import { dialog, ipcMain } from 'electron'
+import { pickDirectoryInApp } from '../services/dialogPicker'
 import { CC } from '@shared/ipc/channels'
 import type {
   CorpusScanResult,
@@ -70,6 +71,11 @@ export function registerCorpusIpc(options: CorpusIpcOptions): void {
   )
 
   ipcMain.handle(CC.corpus.pickDirectory, async (): Promise<string | null> => {
+    // Linux（含 WSLg）：原生对话框全坏（portal 冻结/GTK 挂死，06 §5 手测回归），
+    // 用应用内自绘选择器；Windows/macOS 保持原生。
+    if (process.platform === 'linux') {
+      return pickDirectoryInApp({ title: '选择语料目录', buttonLabel: '选择此目录' })
+    }
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       buttonLabel: '选择此目录'

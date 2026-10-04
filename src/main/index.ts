@@ -8,6 +8,7 @@ import { registerCorpusIpc } from './ipc/corpus'
 import { registerLlmIpc } from './ipc/llm'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { registerClipboardIpc } from './ipc/clipboard'
+import { registerDialogIpc } from './ipc/dialog'
 import { openDao, type ChessDao } from './services/db'
 import { LlmProxy } from './services/llm-proxy'
 import { SettingsService } from './services/settings'
@@ -93,6 +94,7 @@ app.whenReady().then(() => {
   )
   registerSecureIpc(credentials)
   registerClipboardIpc()
+  registerDialogIpc()
   // 语料库（M5，06 文档）：扫描/读取 + 下载（SSRF/zip-slip 防护在主进程）。
   registerCorpusIpc({
     settings,
