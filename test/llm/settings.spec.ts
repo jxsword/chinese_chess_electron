@@ -62,6 +62,26 @@ describe('LlmGameSettings.fromRaw（越界一律 clamp 回默认）', () => {
     expect(llmSettingsFromRaw(raw({ advisorModeIndex: 3 })).advisorMode).toBe('candidate')
   })
 
+  it('引擎类型（DR-014）：缺省 → llm；index 1 → builtin；越界 → llm', () => {
+    expect(llmSettingsFromRaw({}).humanVsLlmOpponentType).toBe('llm')
+    const s = llmSettingsFromRaw(
+      raw({
+        redSideType: 1,
+        blackSideType: 1,
+        humanVsLlmOpponentType: 1
+      })
+    )
+    expect(s.redSideType).toBe('builtin')
+    expect(s.blackSideType).toBe('builtin')
+    expect(s.humanVsLlmOpponentType).toBe('builtin')
+    const s2 = llmSettingsFromRaw(
+      raw({ redSideType: 9, blackSideType: -1, humanVsLlmOpponentType: 2.5 })
+    )
+    expect(s2.redSideType).toBe('llm')
+    expect(s2.blackSideType).toBe('llm')
+    expect(s2.humanVsLlmOpponentType).toBe('llm')
+  })
+
   it('红黑强度缺省回落 strengthBlend（原始值 clamp 后）', () => {
     const s = llmSettingsFromRaw(raw({ strengthBlend: 75 }))
     expect(s.redStrengthBlend).toBe(75)
@@ -90,6 +110,8 @@ describe('键名与映射（Key 原样保留，07 §3）', () => {
     expect(LLM_SETTING_KEYS.fallbackIndex).toBe('llm_settings_fallbackIndex')
     expect(LLM_SETTING_KEYS.advisorModeIndex).toBe('llm_settings_advisorModeIndex')
     expect(LLM_SETTING_KEYS.redStrengthBlend).toBe('llm_settings_redStrengthBlend')
+    expect(LLM_SETTING_KEYS.redSideType).toBe('llm_settings_redSideType')
+    expect(LLM_SETTING_KEYS.humanVsLlmOpponentType).toBe('llm_settings_humanVsLlmOpponentType')
   })
 
   it('toMap → fromRaw 往返（枚举转 index，键为 electron-store 全名）', () => {

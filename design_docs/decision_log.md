@@ -130,3 +130,17 @@
 - 结论: 方案 A + 透明化附加项。思考型模型的使用建议（勾选"禁用思维链"，或空闲超时 30s + 重试 1 次加速降级）写入用户文档，不改默认协议数值。
 - 影响: src/main/services/credentials.ts、llm-proxy.ts（testConnection）、packages/llm（onAttempt）、两页状态栏（useThinkingStatus）；测试 credentials 2 例、llmProxy 2 例、moveSource 1 例、格式化 2 例。
 - 记录时间 / 会话: 2026-10-04（M4 实机回归会话）
+
+## DR-014 2026-10-04 黑方配置跨页镜像红方 + 对局引擎类型直接可选 [状态: 生效]
+- 背景: 用户需求两条。① "黑方大模型的配置可以共享，若未配置，使用红方的"——两页黑方本就共享 llm_config_black 槽位，缺的是"黑方为空时回退红方"的跨页镜像（DR-012 只有大模型对战页的页内镜像）；② "两个对战模式应支持直接选择：内置AI / 大模型"——目前内置 AI 只是 LLM 失败后的兜底，无法直接选择。
+- 需求分析与优先级: R1 跨页镜像（P1，复用 DR-012 机制，改动小）；R2a 大模型对战页红/黑各自可选引擎类型（P2，支持 内置vs大模型/内置vs内置 全组合）；R2b 人机（大模型）页对手可选引擎类型（P3，同一机制）。
+- 选项（引擎类型持久化）:
+  - A. llm_settings_* 新增三键（redSideType/blackSideType/humanVsLlmOpponentType，枚举 index 存档，缺省 llm）——优点: 与现有设置体系一致、跨会话记忆、兼容旧行为（缺省=大模型）; 缺点: settings schema 扩展（fromRaw/toMap/keyOf 同步）。
+  - B. 每局运行时选择不持久化——缺点: 每次进页都要重选，反用户预期。弃。
+- 语义与边界:
+  - 引擎类型为 builtin 的一侧不参与 LLM 配置校验与镜像，直接 ChessAiPlayer(3) 应手；
+  - 黑方槽位为空（三字段全空）时跨页镜像红方配置（人机页与大模型对战页共享 llm_config_red）；镜像为只读视图——人机页镜像态不回写黑槽、"立即保存"提示去红方槽位修改，防一手编辑两处存储；
+  - 测试连接在镜像态测真正生效的配置（testOverride 走红方槽位注入）；
+  - 大模型对战页 start 未加载完成时开始按钮禁用（修复"点击无反应"）。
+- 影响: packages/llm/settings.ts（SideEngineType 三键）、LlmVsLlmPage（类型下拉+统一 runLoop 按侧构造 MoveSource）、HumanVsLlmPage（对手类型+镜像加载/持久化门控）、LlmConfigCard（testOverride）；测试 settings 1 例、humanVsLlm 2 例、llmVsLlm 文案断言修正。
+- 记录时间 / 会话: 2026-10-04（M4 增量会话）

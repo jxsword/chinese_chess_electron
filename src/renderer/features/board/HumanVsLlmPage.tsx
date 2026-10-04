@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import type { MoveSourceResult } from '@packages/engine'
-import type { AdvisorMode, LlmFallback, LlmGameSettings } from '@packages/llm'
+import type { AdvisorMode, LlmFallback, LlmGameSettings, SideEngineType } from '@packages/llm'
 import { HybridLlmPlayer } from '@packages/llm'
 import type { LlmEndpointConfig } from '@shared/ipc/types'
 import { createGameStore } from '@renderer/stores/createGameStore'
@@ -53,6 +53,10 @@ const BLEND_OPTIONS: Record<number, string> = {
   100: '100（最自由）'
 }
 const DIFFICULTY_OPTIONS: Record<number, string> = { 1: '快（2 层）', 3: '中（4 层）', 5: '强（6 层）' }
+const OPPONENT_TYPE_NAMES: Record<SideEngineType, string> = {
+  llm: '大模型',
+  builtin: '内置 AI'
+}
 
 interface PageSettings {
   timeoutSeconds: number
@@ -61,7 +65,11 @@ interface PageSettings {
   advisorMode: AdvisorMode
   strengthBlend: number
   advisorDifficulty: number
+  opponentType: SideEngineType
 }
+
+/** 红方槽位（跨页镜像来源，DR-014：黑方未配置时使用红方配置） */
+const RED_SLOT = 'llm_config_red'
 
 const DEFAULT_CONFIG: LlmEndpointConfig = { baseUrl: '', apiKey: '', model: '', disableThinking: true }
 
@@ -92,6 +100,8 @@ export function HumanVsLlmPage(): React.JSX.Element {
   const thinkingRef = useRef(false)
   /** 最近一次从存储加载的完整设置（回写 copyWith 基底，防清空共享字段）。 */
   const lastLoadedRef = useRef<LlmGameSettings | null>(null)
+  /** 当前配置是跨页镜像（黑方槽位为空、借用红方配置）：镜像时禁用本页回写黑槽（DR-014）。 */
+  const mirroredRef = useRef(false)
   const configRef = useRef(config)
   const settingsRef = useRef(settings)
   const triggerRef = useRef<(() => void) | null>(null)
@@ -114,7 +124,8 @@ export function HumanVsLlmPage(): React.JSX.Element {
     const st = settingsRef.current
     const base = lastLoadedRef.current
     if (cfg === null || st === null || base === null) return
-    void api.secure.set(BLACK_SLOT, cfg).catch(() => {})
+    // 镜像状态下的编辑属于"红方配置的本地视图"，不回写黑方槽位（DR-014）。
+    if (!mirroredRef.current) void api.secure.set(BLACK_SLOT, cfg).catch(() => {})
     // copyWith 只覆盖本页字段（intervalSeconds/红黑强度归 llm_vs_llm 页，防错 #4）。
     void saveLlmSettings({ ...base, timeoutSeconds: st.timeoutSeconds, maxAttempts: st.maxAttempts, fallback: st.fallback, advisorMode: st.advisorMode, strengthBlend: st.strengthBlend, advisorDifficulty: st.advisorDifficulty }).catch(() => {})
   }, [])
@@ -148,21 +159,33 @@ export function HumanVsLlmPage(): React.JSX.Element {
       } catch {
         loaded = null
       }
+      // DR-014：黑方未配置时跨页镜像红方配置（与大模型对战页共享红方槽位）。
+      let redLoaded: LlmEndpointConfig | null
+      try {
+        redLoaded = await api.secure.get(RED_SLOT)
+      } catch {
+        redLoaded = null
+      }
       const gameSettings = await loadLlmSettings()
       if (disposed) return
-      const nextConfig = loaded ?? { ...DEFAULT_CONFIG }
+      const blackEmpty =
+        loaded === null ||
+        (loaded.baseUrl.trim() === '' && loaded.apiKey.trim() === '' && loaded.model.trim() === '')
+      const nextConfig = blackEmpty && redLoaded !== null ? redLoaded : (loaded ?? { ...DEFAULT_CONFIG })
       const nextSettings: PageSettings = {
         timeoutSeconds: gameSettings.timeoutSeconds,
         maxAttempts: gameSettings.maxAttempts,
         fallback: gameSettings.fallback,
         advisorMode: gameSettings.advisorMode,
         strengthBlend: gameSettings.strengthBlend,
-        advisorDifficulty: gameSettings.advisorDifficulty
+        advisorDifficulty: gameSettings.advisorDifficulty,
+        opponentType: gameSettings.humanVsLlmOpponentType
       }
       // ref 先于 state 同步：maybeTrigger 在下次渲染前就要读到就绪值。
       configRef.current = nextConfig
       settingsRef.current = nextSettings
       lastLoadedRef.current = gameSettings
+      mirroredRef.current = blackEmpty && redLoaded !== null
       setConfig(nextConfig)
       setSettings(nextSettings)
       maybeTriggerRef.current?.() // 配置就绪：黑先残局/恢复轮黑时模型先行
@@ -190,6 +213,34 @@ export function HumanVsLlmPage(): React.JSX.Element {
     setLlmThinking(true)
     setAttempt(null)
     setLlmNote('')
+
+    // DR-014：对手引擎类型可直接选内置 AI（大模型失败兜底之外的独立选项）。
+    if (st.opponentType === 'builtin') {
+      const builtin = new ChessAiPlayer(client, 3)
+      void builtin.nextMove(boardSnapshot, history).then(
+        (result: MoveSourceResult): void => {
+          thinkingRef.current = false
+          setLlmThinking(false)
+          vm.unlockInput()
+          if (seq !== gameSeqRef.current) return
+          if (result.status === 'ok' && result.move !== undefined) {
+            if (!vm.playMove(result.move.from, result.move.to)) setLlmNote('黑方着法未通过校验，被拒绝')
+            return
+          }
+          if (result.status === 'failed') {
+            vm.resign('black')
+            setLlmNote(`黑方走子失败：${result.note ?? '未知原因'}，判红方胜`)
+          }
+          // noLegalMove：胜负由棋盘状态呈现
+        },
+        () => {
+          thinkingRef.current = false
+          setLlmThinking(false)
+          vm.unlockInput()
+        }
+      )
+      return
+    }
 
     const player = new HybridLlmPlayer(
       cfg,
@@ -333,7 +384,12 @@ export function HumanVsLlmPage(): React.JSX.Element {
   const result = useStore(store, (s) => s.result)
   const isCheck = useStore(store, (s) => s.isCheck)
   const isRedTurn = useStore(store, (s) => s.isRedTurn)
-  const modelLabel = (config?.model.trim() ?? '') === '' ? '大模型' : config!.model.trim()
+  const modelLabel =
+    settings?.opponentType === 'builtin'
+      ? '内置 AI'
+      : (config?.model.trim() ?? '') === ''
+        ? '大模型'
+        : config!.model.trim()
 
   let statusText: string
   let statusClass: string
@@ -404,16 +460,45 @@ export function HumanVsLlmPage(): React.JSX.Element {
             <div className="cc-section-title">对手</div>
             <div data-testid="llm-display-name">{modelLabel}</div>
           </div>
+          {st !== null && (
+            <label className="cc-llm-field">
+              <span>对手引擎</span>
+              <select
+                aria-label="对手引擎"
+                value={st.opponentType}
+                disabled={isLlmThinking}
+                onChange={(e) => updateSettings({ opponentType: e.target.value as SideEngineType })}
+              >
+                {(Object.entries(OPPONENT_TYPE_NAMES) as Array<[SideEngineType, string]>).map(([v, label]) => (
+                  <option key={v} value={v}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {config !== null && (
-            <LlmConfigCard
-              title="黑方模型（对手）"
-              slot={BLACK_SLOT}
-              config={config}
-              onChange={(c) => {
-                setConfig(c)
-                scheduleAutosave()
-              }}
-            />
+            <div>
+              <LlmConfigCard
+                title="黑方模型（对手）"
+                slot={BLACK_SLOT}
+                config={config}
+                onChange={(c) => {
+                  setConfig(c)
+                  scheduleAutosave()
+                }}
+                testOverride={
+                  mirroredRef.current
+                    ? { config, slot: RED_SLOT }
+                    : undefined
+                }
+              />
+              {mirroredRef.current && (
+                <div className="cc-settings-hint" data-testid="black-crosspage-hint">
+                  黑方未配置——已使用红方的模型配置（修改请在红方槽位或大模型对战页进行）
+                </div>
+              )}
+            </div>
           )}
           {st !== null && (
             <div className="cc-card" data-testid="llm-game-settings">
@@ -521,6 +606,10 @@ export function HumanVsLlmPage(): React.JSX.Element {
               data-testid="llm-save-now"
               onClick={() => {
                 if (config === null) return
+                if (mirroredRef.current) {
+                  showToast('当前为红方配置的镜像视图，请在红方一侧修改配置')
+                  return
+                }
                 void api.secure
                   .set(BLACK_SLOT, config)
                   .then((res) =>

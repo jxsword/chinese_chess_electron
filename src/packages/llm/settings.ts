@@ -14,8 +14,12 @@ export type LlmFallback = 'builtinAi' | 'resign'
 /** 引擎参谋模式（hybrid_llm_move_source.dart:15-23）。 */
 export type AdvisorMode = 'off' | 'candidate' | 'gate'
 
+/** 一方对局引擎类型（DR-014：大模型/内置AI 直接可选，内置AI 不再只是失败兜底）。 */
+export type SideEngineType = 'llm' | 'builtin'
+
 export const LLM_FALLBACK_VALUES: readonly LlmFallback[] = ['builtinAi', 'resign']
 export const ADVISOR_MODE_VALUES: readonly AdvisorMode[] = ['off', 'candidate', 'gate']
+export const SIDE_ENGINE_TYPE_VALUES: readonly SideEngineType[] = ['llm', 'builtin']
 
 export interface LlmGameSettings {
   /** 空闲超时（秒），5–600。 */
@@ -36,6 +40,12 @@ export interface LlmGameSettings {
   redStrengthBlend: number
   /** 大模型对战中黑方的参谋强度。 */
   blackStrengthBlend: number
+  /** 大模型对战红方引擎类型（DR-014，默认大模型）。 */
+  redSideType: SideEngineType
+  /** 大模型对战黑方引擎类型（DR-014，默认大模型）。 */
+  blackSideType: SideEngineType
+  /** 人机（大模型）页的对手引擎类型（DR-014，默认大模型）。 */
+  humanVsLlmOpponentType: SideEngineType
 }
 
 /** electron-store Key 前缀（07 文档 §3：Key 原样保留）。 */
@@ -50,7 +60,10 @@ export const DEFAULT_LLM_SETTINGS: LlmGameSettings = {
   strengthBlend: 50,
   advisorDifficulty: 5,
   redStrengthBlend: 50,
-  blackStrengthBlend: 50
+  blackStrengthBlend: 50,
+  redSideType: 'llm',
+  blackSideType: 'llm',
+  humanVsLlmOpponentType: 'llm'
 }
 
 /** 持久化字段 → electron-store Key（与 llm_settings.dart:125-164 的键名一致）。 */
@@ -63,7 +76,10 @@ export const LLM_SETTING_KEYS = {
   strengthBlend: `${LLM_SETTINGS_PREFIX}strengthBlend`,
   advisorDifficulty: `${LLM_SETTINGS_PREFIX}advisorDifficulty`,
   redStrengthBlend: `${LLM_SETTINGS_PREFIX}redStrengthBlend`,
-  blackStrengthBlend: `${LLM_SETTINGS_PREFIX}blackStrengthBlend`
+  blackStrengthBlend: `${LLM_SETTINGS_PREFIX}blackStrengthBlend`,
+  redSideType: `${LLM_SETTINGS_PREFIX}redSideType`,
+  blackSideType: `${LLM_SETTINGS_PREFIX}blackSideType`,
+  humanVsLlmOpponentType: `${LLM_SETTINGS_PREFIX}humanVsLlmOpponentType`
 } as const
 
 /** toMap()（llm_settings.dart:72-82）：枚举转 index 整数；键为 electron-store 全名。 */
@@ -77,7 +93,12 @@ export function llmSettingsToMap(s: LlmGameSettings): Record<string, number> {
     [LLM_SETTING_KEYS.strengthBlend]: s.strengthBlend,
     [LLM_SETTING_KEYS.advisorDifficulty]: s.advisorDifficulty,
     [LLM_SETTING_KEYS.redStrengthBlend]: s.redStrengthBlend,
-    [LLM_SETTING_KEYS.blackStrengthBlend]: s.blackStrengthBlend
+    [LLM_SETTING_KEYS.blackStrengthBlend]: s.blackStrengthBlend,
+    [LLM_SETTING_KEYS.redSideType]: SIDE_ENGINE_TYPE_VALUES.indexOf(s.redSideType),
+    [LLM_SETTING_KEYS.blackSideType]: SIDE_ENGINE_TYPE_VALUES.indexOf(s.blackSideType),
+    [LLM_SETTING_KEYS.humanVsLlmOpponentType]: SIDE_ENGINE_TYPE_VALUES.indexOf(
+      s.humanVsLlmOpponentType
+    )
   }
 }
 
@@ -113,7 +134,10 @@ export function llmSettingsFromRaw(raw: LlmSettingsRaw): LlmGameSettings {
     strengthBlend: clampInt(strengthBlend, 0, 100),
     advisorDifficulty: clampInt(intOr(read('advisorDifficulty'), 5), 1, 5),
     redStrengthBlend: clampInt(intOr(read('redStrengthBlend'), strengthBlend), 0, 100),
-    blackStrengthBlend: clampInt(intOr(read('blackStrengthBlend'), strengthBlend), 0, 100)
+    blackStrengthBlend: clampInt(intOr(read('blackStrengthBlend'), strengthBlend), 0, 100),
+    redSideType: pickEnum(read('redSideType'), SIDE_ENGINE_TYPE_VALUES, 'llm'),
+    blackSideType: pickEnum(read('blackSideType'), SIDE_ENGINE_TYPE_VALUES, 'llm'),
+    humanVsLlmOpponentType: pickEnum(read('humanVsLlmOpponentType'), SIDE_ENGINE_TYPE_VALUES, 'llm')
   }
 }
 

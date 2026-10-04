@@ -19,11 +19,12 @@ import {
   resolveLlmSideConfig,
   type AdvisorMode,
   type LlmFallback,
-  type LlmGameSettings
+  type LlmGameSettings,
+  type SideEngineType
 } from '@packages/llm'
 import { HybridLlmPlayer } from '@packages/llm'
 import type { LlmEndpointConfig } from '@shared/ipc/types'
-import type { MoveSourceResult } from '@packages/engine'
+import type { MoveSource, MoveSourceResult } from '@packages/engine'
 import { createGameStore } from '@renderer/stores/createGameStore'
 import { GameAutoSave } from '@renderer/stores/gameAutoSave'
 import { restoreOrNewGame } from '@renderer/stores/gameRestore'
@@ -58,6 +59,10 @@ const BLEND_OPTIONS: Record<number, string> = {
   100: '100（最自由）'
 }
 const DIFFICULTY_OPTIONS: Record<number, string> = { 1: '快（2 层）', 3: '中（4 层）', 5: '强（6 层）' }
+const SIDE_TYPE_NAMES: Record<SideEngineType, string> = {
+  llm: '大模型',
+  builtin: '内置 AI'
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -210,39 +215,49 @@ export function LlmVsLlmPage(): React.JSX.Element {
         return
       }
       const isRedTurn = vm.isRedTurn
-      // 空配置一侧运行时跟随对方（DR-012）；authSlot 随生效配置来源（DR-010）。
-      const resolved = isRedTurn
-        ? resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT)
-        : resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT)
-      const config = resolved.config
-      setStatusText(`${isRedTurn ? '红方' : '黑方'}（${config.model.trim()}）思考中…`)
-
       // await 前快照棋盘与历史。
       const boardSnapshot = vm.board.copy()
       const history = [...vm.current.moveHistory]
-      const player = new HybridLlmPlayer(
-        config,
-        transport,
-        client,
-        {
-          advisorMode: st.advisorMode,
-          strengthBlend: isRedTurn ? st.redStrengthBlend : st.blackStrengthBlend,
-          advisorDifficulty: st.advisorDifficulty,
-          maxAttempts: st.maxAttempts,
-          fallback: st.fallback,
-          builtinAiSource: () => new ChessAiPlayer(client, 3)
-        },
-        { authSlot: resolved.authSlot }
-      )
-      playerRef.current = player
+
+      // DR-014：按该侧引擎类型构造走子来源（内置AI 直接应手，非失败兜底）。
+      let source: MoveSource
+      let sideLabel: string
+      if ((isRedTurn ? st.redSideType : st.blackSideType) === 'builtin') {
+        source = new ChessAiPlayer(client, 3)
+        sideLabel = '内置 AI'
+      } else {
+        // 空配置一侧运行时跟随对方（DR-012）；authSlot 随生效配置来源（DR-010）。
+        const resolved = isRedTurn
+          ? resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT)
+          : resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT)
+        source = new HybridLlmPlayer(
+          resolved.config,
+          transport,
+          client,
+          {
+            advisorMode: st.advisorMode,
+            strengthBlend: isRedTurn ? st.redStrengthBlend : st.blackStrengthBlend,
+            advisorDifficulty: st.advisorDifficulty,
+            maxAttempts: st.maxAttempts,
+            fallback: st.fallback,
+            builtinAiSource: () => new ChessAiPlayer(client, 3),
+            onAttempt: (n, total) => setAttempt({ n, total })
+          },
+          { authSlot: resolved.authSlot }
+        )
+        playerRef.current = source as HybridLlmPlayer
+        sideLabel = resolved.config.model.trim()
+      }
+      setStatusText(`${isRedTurn ? '红方' : '黑方'}（${sideLabel}）思考中…`)
+
       let result: MoveSourceResult
       setMoveActive(true)
       setAttempt(null)
       try {
-        result = await player.nextMove(boardSnapshot, history)
+        result = await source.nextMove(boardSnapshot, history)
       } catch (e) {
         setMoveActive(false)
-        if (e instanceof Error && e.message === 'llm chat canceled') return
+        if (e instanceof Error && (e.message === 'llm chat canceled' || e.message === 'engine canceled')) return
         if (seq !== gameSeqRef.current) return
         onSideFailed(isRedTurn, `走子来源异常：${String(e instanceof Error ? e.message : e)}`)
         return
@@ -290,12 +305,19 @@ export function LlmVsLlmPage(): React.JSX.Element {
   const start = useCallback((): void => {
     const red = redRef.current
     const black = blackRef.current
-    if (red === null || black === null) return
-    // 空配置一侧运行时跟随对方（DR-012）：按生效配置校验。
-    const redEff = resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT).config
-    const blackEff = resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT).config
-    if (!isConfigured(redEff) || !isConfigured(blackEff)) {
-      showToast('请先为红黑双方填写端点地址与模型 ID')
+    const st = settingsRef.current
+    if (red === null || black === null || st === null) {
+      // 配置/设置未加载完成：不可对局，如实提示（此前静默 return 会被误解为"没反应"）。
+      showToast('配置加载中，请稍候再开始')
+      return
+    }
+    // DR-014：引擎类型为"内置 AI"的一侧不要求 LLM 配置；DR-012 镜像校验仅对大模型侧。
+    const redMirror = st.redSideType === 'llm'
+    const blackMirror = st.blackSideType === 'llm'
+    const redEff = redMirror ? resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT).config : red
+    const blackEff = blackMirror ? resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT).config : black
+    if ((redMirror && !isConfigured(redEff)) || (blackMirror && !isConfigured(blackEff))) {
+      showToast('大模型一侧需填写端点地址与模型 ID（或把该侧切换为内置 AI）')
       return
     }
     runningRef.current = true
@@ -387,6 +409,8 @@ export function LlmVsLlmPage(): React.JSX.Element {
           type="button"
           className="cc-btn"
           data-testid="llm-loop-toggle"
+          disabled={settings === null}
+          title={settings === null ? '配置加载中' : undefined}
           onClick={() => (running ? togglePause() : start())}
         >
           {!running ? '开始对战' : paused ? '继续' : '暂停'}
@@ -432,6 +456,11 @@ export function LlmVsLlmPage(): React.JSX.Element {
                   未配置——对局时将使用黑方的模型配置
                 </div>
               )}
+              {isEmptyLlmConfig(redConfig) && (blackConfig === null || !isConfigured(blackConfig)) && (
+                <div className="cc-settings-hint">
+                  未配置——保存后其他页面（如人机对战）黑方未配置时将使用本侧
+                </div>
+              )}
             </div>
           )}
           {blackConfig !== null && (
@@ -444,10 +473,20 @@ export function LlmVsLlmPage(): React.JSX.Element {
                   setBlackConfig(c)
                   scheduleAutosave()
                 }}
+                testOverride={
+                  isEmptyLlmConfig(blackConfig) && redConfig !== null && isConfigured(redConfig)
+                    ? { config: redConfig, slot: RED_SLOT }
+                    : undefined
+                }
               />
               {isEmptyLlmConfig(blackConfig) && redConfig !== null && isConfigured(redConfig) && (
                 <div className="cc-settings-hint" data-testid="black-mirror-hint">
-                  未配置——对局时将使用红方的模型配置
+                  本页未配置——对局时将使用红方的模型配置
+                </div>
+              )}
+              {isEmptyLlmConfig(blackConfig) && (redConfig === null || !isConfigured(redConfig)) && (
+                <div className="cc-settings-hint" data-testid="black-crosspage-hint">
+                  未配置——人机对战（大模型）的黑方也将使用红方配置（保存后生效）
                 </div>
               )}
             </div>
@@ -455,6 +494,34 @@ export function LlmVsLlmPage(): React.JSX.Element {
           {st !== null && (
             <div className="cc-card" data-testid="llm-game-settings">
               <div className="cc-section-title">对局设置</div>
+              <label className="cc-llm-field">
+                <span>红方引擎</span>
+                <select
+                  aria-label="红方引擎"
+                  value={st.redSideType}
+                  onChange={(e) => updateSettings({ redSideType: e.target.value as SideEngineType })}
+                >
+                  {(Object.entries(SIDE_TYPE_NAMES) as Array<[SideEngineType, string]>).map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="cc-llm-field">
+                <span>黑方引擎</span>
+                <select
+                  aria-label="黑方引擎"
+                  value={st.blackSideType}
+                  onChange={(e) => updateSettings({ blackSideType: e.target.value as SideEngineType })}
+                >
+                  {(Object.entries(SIDE_TYPE_NAMES) as Array<[SideEngineType, string]>).map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="cc-llm-field">
                 <span>空闲超时</span>
                 <select aria-label="空闲超时" value={st.timeoutSeconds} onChange={(e) => updateSettings({ timeoutSeconds: Number(e.target.value) })}>

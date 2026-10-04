@@ -45,7 +45,10 @@ export async function saveLlmSettings(
     strengthBlend: LLM_SETTING_KEYS.strengthBlend,
     advisorDifficulty: LLM_SETTING_KEYS.advisorDifficulty,
     redStrengthBlend: LLM_SETTING_KEYS.redStrengthBlend,
-    blackStrengthBlend: LLM_SETTING_KEYS.blackStrengthBlend
+    blackStrengthBlend: LLM_SETTING_KEYS.blackStrengthBlend,
+    redSideType: LLM_SETTING_KEYS.redSideType,
+    blackSideType: LLM_SETTING_KEYS.blackSideType,
+    humanVsLlmOpponentType: LLM_SETTING_KEYS.humanVsLlmOpponentType
   }
   const keys = fields ?? (Object.keys(keyOf) as Array<keyof LlmGameSettings>)
   const entries = keys.map((f) => [keyOf[f], map[keyOf[f]]] as const)

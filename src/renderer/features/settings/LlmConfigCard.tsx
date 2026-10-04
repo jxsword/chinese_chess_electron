@@ -16,6 +16,11 @@ export interface LlmConfigCardProps {
   config: LlmEndpointConfig
   /** 配置变化（不落盘；落盘由页面防抖保存） */
   onChange: (config: LlmEndpointConfig) => void
+  /**
+   * 测试连接的生效配置（DR-014 镜像）：本卡配置全空、对局时跟随另一方时，
+   * 传另一方配置与槽位——"测试连接"测的是真正会用于对局的配置。
+   */
+  testOverride?: { config: LlmEndpointConfig; slot: SecureSlot }
 }
 
 /** 选择预设：非"自定义"即回填端点与示例模型 ID */
@@ -26,7 +31,7 @@ function presetFor(config: LlmEndpointConfig): LlmPreset {
   return hit ?? LLM_PRESET_CUSTOM
 }
 
-export function LlmConfigCard({ title, slot, config, onChange }: LlmConfigCardProps): React.JSX.Element {
+export function LlmConfigCard({ title, slot, config, onChange, testOverride }: LlmConfigCardProps): React.JSX.Element {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
 
@@ -34,7 +39,7 @@ export function LlmConfigCard({ title, slot, config, onChange }: LlmConfigCardPr
     setTesting(true)
     setTestResult(null)
     void api.llm
-      .testConnection(config, slot)
+      .testConnection(testOverride !== undefined ? testOverride.config : config, testOverride !== undefined ? testOverride.slot : slot)
       .then((res) => setTestResult(res.message))
       .catch(() => setTestResult('连接失败：测试通道不可用'))
       .finally(() => setTesting(false))

@@ -22,6 +22,9 @@ function renderPage(route = '/human-vs-llm'): ReturnType<typeof render> {
 }
 
 function seedSettings(over: Partial<Record<string, unknown>> = {}): void {
+  void api.store.set(LLM_SETTING_KEYS.humanVsLlmOpponentType, 0) // llm
+  void api.store.set(LLM_SETTING_KEYS.redSideType, 0)
+  void api.store.set(LLM_SETTING_KEYS.blackSideType, 0)
   void api.store.set(LLM_SETTING_KEYS.timeoutSeconds, 30)
   void api.store.set(LLM_SETTING_KEYS.maxAttempts, 3)
   void api.store.set(LLM_SETTING_KEYS.fallbackIndex, 0) // builtinAi
@@ -44,10 +47,10 @@ async function playCannonCentral(container: HTMLElement): Promise<void> {
 
 beforeEach(async () => {
   // mock 单例跨测试共享：清掉上一测试自动保存的对局存档（防恢复干扰），
-  // 并等上一测试卸载回写链（9 键顺序落盘 ~20ms）完全冲洗后再播种。
+  // 并等上一测试卸载回写链（含 DR-014 新键）完全冲洗后再播种。
   await api.db.deleteForMode('humanVsLlm')
-  await new Promise((r) => setTimeout(r, 80))
-  seedSettings()
+  await new Promise((r) => setTimeout(r, 120))
+  seedSettings() // 含 humanVsLlmOpponentType=llm（覆盖用例 10b 的改动）
 })
 
 afterEach(() => {
@@ -67,6 +70,10 @@ describe('思考状态后缀格式化（思考型模型透明化）', () => {
 })
 
 describe('人机对战（大模型）页（08 §3.3）', () => {
+  let container0: HTMLElement | null = null
+  afterEach(() => {
+    container0 = null
+  })
   it('01 配置卡与设置区可见，默认参谋模式候选、模型未配置时占位显示', async () => {
     renderPage()
     await screen.findByTestId('llm-config-card')
@@ -197,6 +204,41 @@ describe('人机对战（大模型）页（08 §3.3）', () => {
     expect(setSpy2).toHaveBeenCalled()
     expect((setSpy2.mock.calls[0]![1] as { model: string }).model).toBeDefined()
   })
+
+  it('10b 对手引擎选内置 AI：黑方由内置引擎直接应手（DR-014）', async () => {
+    await api.store.set(LLM_SETTING_KEYS.humanVsLlmOpponentType, 1) // builtin
+    const { container } = renderPage()
+    container0 = container
+    await screen.findByTestId('llm-config-card')
+    expect(screen.getByTestId('llm-display-name').textContent).toBe('内置 AI')
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('轮到你走棋（红方）'))
+    await playCannonCentral(container0!)
+    // 内置 AI 黑方应手 → 轮红（无兜底注解，直接走子）
+    await waitFor(
+      () => expect(screen.getByText(/当前回合：/).textContent).toContain('红方'),
+      { timeout: 20_000 }
+    )
+    expect(screen.queryByTestId('llm-test-result')).toBeNull()
+  }, 30_000)
+
+  it('10c 黑方未配置 → 跨页镜像红方配置（DR-014）：测试连接测红方', async () => {
+    // 红方槽位有配置（模拟大模型对战页保存过红方），黑方槽位为空
+    await api.secure.delete('llm_config_black')
+    await api.secure.set('llm_config_red', {
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'sk-test-abcd',
+      model: 'glm-4-flash',
+      disableThinking: true
+    })
+    renderPage()
+    await screen.findByTestId('llm-config-card')
+    // 显示镜像提示；对手名来自红方配置
+    await waitFor(() => expect(screen.getByTestId('black-crosspage-hint')).not.toBeNull())
+    await waitFor(() => expect(screen.getByTestId('llm-display-name').textContent).toBe('glm-4-flash'))
+    // 测试连接走红方槽位（mock 返回成功）
+    fireEvent.click(screen.getByTestId('llm-test-connection'))
+    await waitFor(() => expect(screen.getByTestId('llm-test-result').textContent).toContain('mock 连接成功'))
+  }, 20_000)
 
   it('10 残局来源：不显示"保存棋局"（防错 #6），黑先残局模型先行', async () => {
     const blackFirst = '4k4/9/9/9/9/9/4C4/9/4C4/4K4 b - - 0 1'

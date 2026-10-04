@@ -11,13 +11,15 @@ export {
   LLM_SETTING_KEYS,
   LLM_SETTINGS_PREFIX,
   ADVISOR_MODE_VALUES,
+  SIDE_ENGINE_TYPE_VALUES,
   llmSettingsFromRaw,
   llmSettingsToMap,
   resolveTimeoutSeconds,
   type AdvisorMode,
   type LlmFallback,
   type LlmGameSettings,
-  type LlmSettingsRaw
+  type LlmSettingsRaw,
+  type SideEngineType
 } from './settings'
 export {
   decodeCell,

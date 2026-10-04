@@ -26,6 +26,10 @@ async function seedBothConfigs(): Promise<void> {
 }
 
 function seedSettings(over: Partial<Record<string, unknown>> = {}): void {
+  // DR-014 新键：显式重置（防跨文件 mock store 残留 builtin 设置）
+  void api.store.set(LLM_SETTING_KEYS.redSideType, 0)
+  void api.store.set(LLM_SETTING_KEYS.blackSideType, 0)
+  void api.store.set(LLM_SETTING_KEYS.humanVsLlmOpponentType, 0)
   void api.store.set(LLM_SETTING_KEYS.timeoutSeconds, 30)
   void api.store.set(LLM_SETTING_KEYS.maxAttempts, 3)
   void api.store.set(LLM_SETTING_KEYS.fallbackIndex, 0) // builtinAi
@@ -39,7 +43,7 @@ function seedSettings(over: Partial<Record<string, unknown>> = {}): void {
 beforeEach(async () => {
   // mock 单例跨测试共享：清存档 + 冲洗上一测试的卸载回写链
   await api.db.deleteForMode('llmVsLlm')
-  await new Promise((r) => setTimeout(r, 80))
+  await new Promise((r) => setTimeout(r, 150))
   seedSettings()
 })
 
@@ -50,10 +54,23 @@ afterEach(() => {
 
 describe('大模型对战页（08 §3.4 / 05 §8.1）', () => {
   it('01 双方未配置：开始被拦截并提示', async () => {
+    await api.secure.delete('llm_config_red') // 显式清槽（防跨文件 mock store 残留）
+    await api.secure.delete('llm_config_black')
     renderPage()
     await screen.findAllByTestId('llm-config-card')
+    // 开始按钮在设置加载完成后才启用（配置加载中禁用）
+    await waitFor(() => {
+      const btn = screen.getByTestId('llm-loop-toggle') as HTMLButtonElement
+      expect(btn.disabled).toBe(false)
+    })
+    // 重渲染会重建按钮节点：点击前重新查询（避免 detached 引用点击无效）
     fireEvent.click(screen.getByTestId('llm-loop-toggle'))
-    await waitFor(() => expect(screen.getByText('请先为红黑双方填写端点地址与模型 ID')).not.toBeNull())
+    // toast 文本断言用选择器（文案含全角标点，getByText 的文本节点匹配不稳定）。
+    await waitFor(() =>
+      expect(
+        document.querySelector('.cc-snackbar')?.textContent ?? ''
+      ).toContain('端点地址与模型 ID')
+    )
     expect(screen.getByTestId('llm-loop-status').textContent).toContain('等待开始')
   })
 
