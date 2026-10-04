@@ -5,7 +5,7 @@
  * 且不写自动存档（canSave=false，防污染每模式一局的存档桶，08 防错 #6）。
  * 每次进入页面创建独立 store 实例，离开销毁并触发离开保存（铁律 #6 + 07 §2）。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import { createGameStore } from '@renderer/stores/createGameStore'
@@ -15,6 +15,7 @@ import { recordFromSession, writeShareText } from '@packages/storage-schema'
 import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, MoveRecordsList, ResultBanner } from './sidePanel'
+import { useRepetitionJudge } from './useRepetitionJudge'
 import { api } from '@renderer/ipc/client'
 import type { GameStore } from '@renderer/stores/createGameStore'
 
@@ -57,6 +58,10 @@ export function HumanVsHumanPage(): React.JSX.Element {
     setToast(message)
     toastTimerRef.current = setTimeout(() => setToast(null), 2200)
   }
+
+  // 重复裁决（DR-018）：双方均为玩家，三次重复判和时弹确认框
+  const isHumanSide = useCallback((): boolean => true, [])
+  const { drawOffer, acceptDraw, declineDraw } = useRepetitionJudge(store, isHumanSide, showToast)
 
   // 计时器：每秒累计一次；终局后暂停累计（human_vs_human_page.dart:86-99）
   useEffect(() => {
@@ -211,6 +216,16 @@ export function HumanVsHumanPage(): React.JSX.Element {
             setConfirmingNewGame(false)
             newGame()
           }}
+        />
+      )}
+      {drawOffer !== null && (
+        <ConfirmDialog
+          title="三次重复局面"
+          content="双方连续走出相同局面，按规则可判和。可接受和棋，或变着继续对局（再次重复将强制判和）。"
+          confirmLabel="接受和棋"
+          cancelLabel="变着继续"
+          onCancel={declineDraw}
+          onConfirm={acceptDraw}
         />
       )}
       {savingRecord && (

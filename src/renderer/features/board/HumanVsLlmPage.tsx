@@ -14,6 +14,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import type { MoveSourceResult } from '@packages/engine'
 import type { AdvisorMode, LlmFallback, LlmGameSettings, SideEngineType } from '@packages/llm'
+import type { Side } from '@packages/rules'
 import { HybridLlmPlayer } from '@packages/llm'
 import type { LlmEndpointConfig } from '@shared/ipc/types'
 import { createGameStore } from '@renderer/stores/createGameStore'
@@ -27,6 +28,7 @@ import { formatThinkingSuffix, useThinkingElapsed, type AttemptProgress } from '
 import { LlmConfigCard } from '@renderer/features/settings/LlmConfigCard'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
+import { useRepetitionJudge } from './useRepetitionJudge'
 import { api } from '@renderer/ipc/client'
 import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 
@@ -219,7 +221,8 @@ export function HumanVsLlmPage(): React.JSX.Element {
     // DR-014：对手引擎类型可直接选内置 AI（大模型失败兜底之外的独立选项）。
     if (st.opponentType === 'builtin') {
       const builtin = new ChessAiPlayer(client, 3)
-      void builtin.nextMove(boardSnapshot, history).then(
+      const fenHistory = [...vm.current.fenHistory] // DR-018：L2 历史回避入参
+      void builtin.nextMove(boardSnapshot, history, fenHistory).then(
         (result: MoveSourceResult): void => {
           thinkingRef.current = false
           setLlmThinking(false)
@@ -341,6 +344,10 @@ export function HumanVsLlmPage(): React.JSX.Element {
     if (vm.isRedTurn) return // 仍轮玩家（防御）
     triggerLlmMove()
   }, [store, triggerLlmMove])
+
+  // 重复裁决（DR-018）：玩家执红，黑方为模型/内置 AI 时自动接受和棋
+  const isHumanSide = useCallback((side: Side): boolean => side === 'red', [])
+  const { drawOffer, acceptDraw, declineDraw } = useRepetitionJudge(store, isHumanSide, showToast)
 
   const saveGame = useCallback((): void => {
     const vm = store.getState().vm
@@ -645,6 +652,16 @@ export function HumanVsLlmPage(): React.JSX.Element {
             setConfirmingNewGame(false)
             newGame()
           }}
+        />
+      )}
+      {drawOffer !== null && (
+        <ConfirmDialog
+          title="三次重复局面"
+          content="双方连续走出相同局面，按规则可判和。可接受和棋，或变着继续对局（再次重复将强制判和）。"
+          confirmLabel="接受和棋"
+          cancelLabel="变着继续"
+          onCancel={declineDraw}
+          onConfirm={acceptDraw}
         />
       )}
       {savingRecord && (

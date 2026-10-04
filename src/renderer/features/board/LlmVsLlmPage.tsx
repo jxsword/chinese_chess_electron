@@ -36,6 +36,7 @@ import { formatThinkingSuffix, useThinkingElapsed, type AttemptProgress } from '
 import { LlmConfigCard } from '@renderer/features/settings/LlmConfigCard'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
+import { useRepetitionJudge } from './useRepetitionJudge'
 import { api } from '@renderer/ipc/client'
 import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 
@@ -220,6 +221,7 @@ export function LlmVsLlmPage(): React.JSX.Element {
       // await 前快照棋盘与历史。
       const boardSnapshot = vm.board.copy()
       const history = [...vm.current.moveHistory]
+      const fenHistory = [...vm.current.fenHistory] // DR-018：L2 历史回避入参
 
       // DR-014：按该侧引擎类型构造走子来源（内置AI 直接应手，非失败兜底）。
       let source: MoveSource
@@ -256,7 +258,11 @@ export function LlmVsLlmPage(): React.JSX.Element {
       setMoveActive(true)
       setAttempt(null)
       try {
-        result = await source.nextMove(boardSnapshot, history)
+        // 内置 AI 应手传历史局面（L2 回避）；LLM 走子仅传走法记录。
+        result =
+          source instanceof ChessAiPlayer
+            ? await source.nextMove(boardSnapshot, history, fenHistory)
+            : await source.nextMove(boardSnapshot, history)
       } catch (e) {
         setMoveActive(false)
         if (e instanceof Error && (e.message === 'llm chat canceled' || e.message === 'engine canceled')) return
@@ -389,6 +395,10 @@ export function LlmVsLlmPage(): React.JSX.Element {
     return () => autoSave.dispose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
+
+  // 重复裁决（DR-018）：双方均为引擎方，和棋/判负全部自动执行
+  const isHumanSide = useCallback((): boolean => false, [])
+  useRepetitionJudge(store, isHumanSide, showToast)
 
   const result = useStore(store, (s) => s.result)
   const resultText =

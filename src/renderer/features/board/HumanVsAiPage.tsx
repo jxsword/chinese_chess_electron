@@ -23,6 +23,7 @@ import { ChessAiPlayer, difficultyName } from '@renderer/players/chessAiPlayer'
 import { EngineClient } from '@renderer/workers/engineClient'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
+import { useRepetitionJudge } from './useRepetitionJudge'
 import { api } from '@renderer/ipc/client'
 import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 
@@ -97,10 +98,11 @@ export function HumanVsAiPage(): React.JSX.Element {
       if (vm.isFinished) return
       const seq = ++gameSeqRef.current
       const boardSnapshot = vm.board
+      const fenHistory = [...vm.current.fenHistory] // DR-018：L2 历史回避入参
       vm.lockInput()
       setAiThinking(true)
 
-      void player.nextMove(boardSnapshot).then(
+      void player.nextMove(boardSnapshot, undefined, fenHistory).then(
         (result: MoveSourceResult): void => {
           setAiThinking(false)
           vm.unlockInput() // 无论作废与否一律解锁（防全局输入锁泄漏，P0-1）
@@ -227,6 +229,10 @@ export function HumanVsAiPage(): React.JSX.Element {
     triggerAiMove(opponentOf(playerSide))
   }, [store, playerSide, triggerAiMove])
 
+  // 重复裁决（DR-018）：玩家侧弹和棋确认框，AI 侧自动接受
+  const isHumanSide = useCallback((side: Side): boolean => side === playerSide, [playerSide])
+  const { drawOffer, acceptDraw, declineDraw } = useRepetitionJudge(store, isHumanSide, showToast)
+
   // 状态栏四态（human_vs_ai_page.dart:_buildAiStatus）。
   // AI 回合且尚未进入思考态（挂载/恢复瞬态）同样显示思考中，防"等待玩家"闪现。
   const result = useStore(store, (s) => s.result)
@@ -347,6 +353,16 @@ export function HumanVsAiPage(): React.JSX.Element {
           cancelLabel="返回"
           onCancel={() => navigate(-1)}
           onConfirm={() => newGame()}
+        />
+      )}
+      {drawOffer !== null && (
+        <ConfirmDialog
+          title="三次重复局面"
+          content="双方连续走出相同局面，按规则可判和。可接受和棋，或变着继续对局（再次重复将强制判和）。"
+          confirmLabel="接受和棋"
+          cancelLabel="变着继续"
+          onCancel={declineDraw}
+          onConfirm={acceptDraw}
         />
       )}
       {savingRecord && (
