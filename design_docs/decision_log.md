@@ -144,3 +144,13 @@
   - 大模型对战页 start 未加载完成时开始按钮禁用（修复"点击无反应"）。
 - 影响: packages/llm/settings.ts（SideEngineType 三键）、LlmVsLlmPage（类型下拉+统一 runLoop 按侧构造 MoveSource）、HumanVsLlmPage（对手类型+镜像加载/持久化门控）、LlmConfigCard（testOverride）；测试 settings 1 例、humanVsLlm 2 例、llmVsLlm 文案断言修正。
 - 记录时间 / 会话: 2026-10-04（M4 增量会话）
+
+## DR-015 2026-10-04 XQF 解密链的验证策略：真实样例锚点 + 测试侧往返构造器 [状态: 生效]
+- 背景: T5.2 的解密算法（formula 链乘/FKeyBytes/版本≥12 布局置换/GB18030）必须逐字节与原版 xqf_parser.dart 一致，但 45MB 语料包在本会话环境不可下载，原版 7 条语料对拍用例（corpus 联接）无法直接移植。需要决定等价验证手段。
+- 选项:
+  - A. 真实样例锚点 + 测试侧往返构造器（已采纳）：① 仓库自带 assets/puzzles/sample_xqf.xqf（真实 v0x0D 文件，覆盖加密+置换+GB18030 全链路）复制进 test/fixtures，断言 FEN/77 着全量重放合法/中文元数据；② 测试侧实现 xqfBuilder（解析器逆变换），对 v0x0A/v0x0C/v0x12 三版本 + 让子盘面 + 黑先行做"构造→解析"往返。优点: 不依赖外部语料、CI 可重复、往返能暴露任何单向笔误。缺点: 往返两侧共享同一理解、无法发现"双方一致但与真格式不符"的系统性错误（由真实样例锚点补位）。代价: builder 约 150 行测试代码。
+  - B. 手工构造二进制 hex 夹具: 每版本手拼字节。优点: 与实现完全独立。缺点: 手工易错、覆盖率低、维护成本高。弃。
+  - C. 临时跑 Python/JS 独立三方实现对拍: 项目内无第三方 XQF 实现（walker8088/cchess 是 Python 且未装）。弃（环境不可行）。
+- 结论: 方案 A。实现期发现并修正一处真实偏差：初版 TS 解析器把"布局置换"应用到了所有加密版本（Dart 原版仅版本≥12 置换，v0x0B/C 仅减 keyXY）——往返用例对 v0x0C 的强断言（置换与不置换必须产生不同字节序）在该偏差下仍会假绿，最终靠"样例锚点 v0x0D + 按版本分治的往返断言"共同锁定。
+- 影响: src/packages/parsers/xqfParser.ts、test/helpers/xqfBuilder.ts、test/fixtures/sample_xqf.xqf、test/parsers/xqfParser.spec.ts（9 条）；iconv-lite 依赖由任务提示词明确授权（GB18030 解码，packages 纯 TS 三端可用——decode 直接收 Uint8Array，不经 Buffer）。
+- 记录时间 / 会话: 2026-10-04（M5 T5.1-T5.3 会话）
