@@ -30,6 +30,15 @@ export {
   type EngineReport,
   type EngineInput
 } from './chessAi'
+export {
+  runMatch,
+  runMatchSeries,
+  MatchRunnerBlunder,
+  BLUNDER_THRESHOLD_CP,
+  type MatchReport,
+  type MatchRunnerOptions,
+  type RunSeriesOptions
+} from './matchRunner'
 export type {
   MoveSource,
   MoveSourceResult,
