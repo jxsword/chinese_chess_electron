@@ -77,11 +77,16 @@ export interface SecureSetResult {
 
 // ---------- cc:vision:* ----------
 
-/** 识图请求（00 文档 §3.1；魔数判 MIME 仅 PNG/JPEG，05 文档 §7） */
+/**
+ * 识图请求（00 文档 §3.1；魔数判 MIME 仅 PNG/JPEG，05 文档 §7）。
+ * authSlot（DR-010 同机制）：渲染层只见掩码 Key，携带本槽位时由主进程注入
+ * 真实 Authorization；渲染层持完整 Key（用户刚输入未回读）时省略本字段。
+ */
 export interface VisionReadBoardRequest {
   config: LlmEndpointConfig
   imageBase64: string
   mime: 'image/png' | 'image/jpeg'
+  authSlot?: SecureSlot
 }
 
 /** 识图结果：组装 10×9 矩阵后经 Fen.build 得到的盘面（05 文档 §7） */

@@ -44,6 +44,22 @@ export {
   vetoFeedback
 } from './prompt'
 export { extractMove, normalizeReply } from './parser'
+export {
+  VISION_MAX_ATTEMPTS,
+  VISION_MAX_TOKENS,
+  VISION_SYSTEM_PROMPT,
+  VISION_TEMPERATURE,
+  VISION_TIMEOUT_MS,
+  VisionParseError,
+  buildVisionRequest,
+  detectImageMime,
+  excerptVisionBody,
+  parseVisionPieces,
+  parseVisionTurn,
+  validateVisionKings,
+  visionGridToFen,
+  visionPrompt
+} from './vision'
 export type { LlmChatHandlers, LlmChatWireRequest, LlmTransport } from './transport'
 export {
   LLM_CANCELED,

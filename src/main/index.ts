@@ -6,11 +6,13 @@ import type { AppLifecyclePhase } from '@shared/ipc/types'
 import { registerDbIpc } from './ipc/db'
 import { registerCorpusIpc } from './ipc/corpus'
 import { registerLlmIpc } from './ipc/llm'
+import { registerVisionIpc } from './ipc/vision'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDialogIpc } from './ipc/dialog'
 import { openDao, type ChessDao } from './services/db'
 import { LlmProxy } from './services/llm-proxy'
+import { VisionReader } from './services/visionReader'
 import { SettingsService } from './services/settings'
 import { CredentialsService, safeStorageCryptor } from './services/credentials'
 import { LLM_SETTING_KEYS, resolveTimeoutSeconds } from '@packages/llm'
@@ -110,6 +112,10 @@ app.whenReady().then(() => {
         resolveTimeoutSeconds(settings.get<unknown>(LLM_SETTING_KEYS.timeoutSeconds)),
       resolveApiKey: (slot) => credentials.getRaw(slot)?.apiKey ?? null
     })
+  )
+  // 视觉识图（M6，05 §7）：非流式多模态请求；掩码 Key 经助手槽位注入（DR-010）。
+  registerVisionIpc(
+    new VisionReader({ resolveApiKey: (slot) => credentials.getRaw(slot)?.apiKey ?? null })
   )
 
   createWindow()
