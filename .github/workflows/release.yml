@@ -1,0 +1,46 @@
+# Release 流程（10 文档 M7 / T7.2+T7.3）：
+# 打 tag v* → 三平台 CI 矩阵各自打包（风险 R1：Windows/macOS 产物由 runner 打，
+# WSL 本地只打 Linux）→ 质量门全绿 → electron-builder 发布到 GitHub Draft Release。
+# 本地打包命令：npm run dist（Linux）/ dist:win / dist:mac。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  dist:
+    name: dist (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: dist
+          - os: windows-latest
+            script: dist:win
+          - os: macos-latest
+            script: dist:mac
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run ${{ matrix.script }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 产物备份：即使发布步骤失败也可从 Actions 下载排查。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            release/**/*.AppImage
+            release/**/*.deb
+            release/**/*.exe
+            release/**/*.dmg
+          if-no-files-found: error

@@ -151,3 +151,8 @@ zcode.json
 
 # usr tmp
 tmp/
+
+# electron-builder 构建资源（图标等，M7 T7.2）：/build/ 是 Flutter 时代产物目录规则，
+# 本仓库现复用 build/ 存放 electron-builder buildResources（electron-builder.yml）。
+!/build/
+!/build/**

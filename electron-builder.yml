@@ -1,0 +1,46 @@
+# electron-builder 配置（10 文档 M7 / 风险 R1）：
+# - 产物三平台：Linux AppImage/deb（WSL 本地）、Windows NSIS / macOS DMG（CI runner 打，R1）；
+# - better-sqlite3 原生模块：npmRebuild 默认开启（postinstall 已 electron-rebuild，
+#   electron-builder 打包时再次按 Electron ABI 重建），*.node 解包出 asar；
+# - 渲染/主/preload 产物在 out/**（electron-vite build），运行时依赖经
+#   externalizeDepsPlugin 保留在 node_modules，由 electron-builder 按 prodDependencies 收录。
+appId: com.chinesechess.ultra
+productName: ChineseChessUltra
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+asar: true
+asarUnpack:
+  - "**/*.node"
+linux:
+  icon: build/icon.png
+  category: Game
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: ChineseChessUltra
+mac:
+  icon: build/icon.png
+  category: public.app-category.games
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64

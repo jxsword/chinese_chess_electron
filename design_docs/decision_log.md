@@ -200,3 +200,14 @@
 - 结论: 采纳 A + 引擎侧单源。表索引 (pieceCode+7)*90+sq（带符号编码直接索引，不导出 KIND_CODE），含先手方键；undoMove 同式逆序异或（异或自逆）。
 - 影响: src/packages/engine/zobrist.ts（新增）、engineBoard.ts（hashLo/hashHi 增量维护）、search.ts/chessAi.ts 消费；test/engine/zobrist.spec.ts 对拍（确定性快照 + 随机对局增量===重建 + apply/undo 往返）。
 - 记录时间 / 会话: 2026-10-04（重复变招优化设计会话）
+
+## DR-020 2026-10-05 M7 打包方案：electron-builder 三平台分工 + Linux 目标 AppImage/deb + 图标来源 [状态: 生效]
+- 背景: T7.2 要求三平台安装包。约束: WSL 内交叉打包 Windows 产物困难（10 §3 风险 R1）；better-sqlite3 原生模块须对齐 Electron ABI（postinstall 已有 electron-rebuild）；仓库沿用 Flutter 时代的 .gitignore（/build/ 被忽略）。
+- 选项:
+  - A. electron-builder + CI 矩阵（已采纳）: 优点: 与 electron-vite 生态一致（同一维护者）、npmRebuild/asarUnpack 原生模块开箱即用、tag 触发三 runner 矩阵一键出三平台产物。缺点: 新增 devDependency（任务提示词明确列出，允许）；AppImage 产物 ~130MB。
+  - B. electron-packager + 自写安装器脚本: 优点: 依赖更少、产物目录可控。缺点: 无自动 rebuild/发布链，NSIS/DMG/deb 全要手搓，CI 脚本维护成本高。弃。
+  - C. 仅打 Linux，Windows/mac 延后: 优点: 本地工作量最小。缺点: 违背 DoD 第 2 条"三平台安装包"。弃（但本地产物仍只打 Linux，Windows/mac 由 CI runner 打——R1 缓解）。
+- Linux 目标格式: AppImage（免安装、冒烟便捷）+ deb（apt 用户常规安装路径）双目标；Windows NSIS（可改安装目录）、macOS DMG（x64+arm64）。图标从原版 Flutter 工程搬运（macos AppIcon 1024px PNG → build/icon.png；windows runner app_icon.ico → build/icon.ico），不新绘。
+- 结论: 采纳 A。发布流程: tag v* 触发 .github/workflows/release.yml → 三平台各跑 lint+test+dist → electron-builder 以 GH_TOKEN 发布 GitHub Draft Release + Actions artifact 备份。
+- 影响: electron-builder.yml（新增）、build/icon.png|ico（新增，.gitignore 加 !/build/ 反白）、package.json scripts（dist/dist:dir/dist:win/dist:mac，author 字段供 deb maintainer）、.github/workflows/release.yml（新增）。验证: 本地 linux-unpacked 启动冒烟 15s 存活（better-sqlite3 加载正常）；AppImage 132MB + deb 107MB 产出。
+- 记录时间 / 会话: 2026-10-05（M7 会话）
