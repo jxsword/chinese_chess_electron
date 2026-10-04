@@ -38,7 +38,7 @@ vi.mock('@renderer/workers/parserClient', () => ({
             ? null
             : {
                 id: `xqf/残局/${f.name}`,
-                initialFen: '4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1',
+                initialFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
                 solutionMoves: ['h2e2'],
                 title: f.name.split('/').pop() ?? f.name,
                 description: null,
@@ -80,7 +80,10 @@ beforeEach(() => {
     pgnIndex: [],
     pgnPage: 0,
     pgnLoading: false,
-    pgnQuery: ''
+    pgnQuery: '',
+    viewingPuzzle: null,
+    viewingLoading: false,
+    viewingError: null
   })
 })
 
@@ -152,5 +155,60 @@ describe('语料浏览', () => {
     fireEvent.click(screen.getByText('下一页'))
     expect(screen.getByText('第 2 / 3 页')).not.toBeNull()
     expect(screen.getByText('对局 50')).not.toBeNull()
+  })
+})
+
+describe('详情重放（M5 增量：点击条目进入局面重放）', () => {
+  it('XQF 条目点击 → 详情视图（局面/步进/返回列表）', async () => {
+    fakeApi.corpus.scan.mockResolvedValue({
+      root: '/corpus',
+      exists: true,
+      categories: [{ name: '残局大全', path: '/corpus/endgame', kind: 'xqfDirectory', source: '残局大全' }]
+    })
+    fakeApi.corpus.listEntries.mockResolvedValue([
+      { path: '/corpus/endgame/好局.xqf', category: '残局大全', source: '残局/适情雅趣', displayName: '好局' }
+    ])
+    fakeApi.corpus.readFiles.mockImplementation((paths: string[]) =>
+      Promise.resolve(paths.map((p) => ({ path: p, bytes: new Uint8Array(0) })))
+    )
+    renderPage()
+    await screen.findByText('残局大全')
+    fireEvent.click(screen.getByText('残局大全'))
+    await screen.findByText('好局.xqf')
+    const st1 = useCorpusBrowser.getState()
+    console.log('DBG1', JSON.stringify({ sel: st1.selectedCategory, entries: st1.entries.length, p0: st1.puzzles[0]?.title ?? null, viewing: st1.viewingPuzzle?.title ?? null, pgnPath: st1.pgnPath }))
+    fireEvent.click(screen.getByText('好局.xqf'))
+    const st2 = useCorpusBrowser.getState()
+    console.log('DBG2', JSON.stringify({ viewing: st2.viewingPuzzle?.title ?? null, viewingLoading: st2.viewingLoading, err: st2.viewingError, pgnPath: st2.pgnPath, entries: st2.entries.length }))
+    // 详情视图出现：步进指示 + 返回列表 + 中文记谱芯片
+    await screen.findByTestId('puzzle-position', {}, { timeout: 2000 })
+    expect(screen.getByTestId('puzzle-position').textContent).toBe('0 / 1 着')
+    expect(screen.getByText('返回列表')).not.toBeNull()
+    expect(screen.getByText('1. 炮二平五')).not.toBeNull()
+    fireEvent.click(screen.getByText('1. 炮二平五'))
+    expect(screen.getByTestId('puzzle-position').textContent).toBe('1 / 1 着')
+    fireEvent.click(screen.getByText('返回列表'))
+    await new Promise<void>((r) => queueMicrotask(() => queueMicrotask(() => r())))
+    expect(screen.queryByTestId('puzzle-position')).toBeNull()
+    expect(screen.getByText('好局.xqf')).not.toBeNull()
+  })
+
+  it('PGN 大文件单局点击 → 解析进详情', async () => {
+    fakeApi.corpus.scan.mockResolvedValue({
+      root: '/corpus',
+      exists: true,
+      categories: [{ name: 'PGN · big.pgns（多局合一）', path: '/corpus/big.pgns', kind: 'pgnFile', source: 'wxf/ICCS' }]
+    })
+    fakeApi.corpus.pgnIndex.mockResolvedValue([
+      { offset: 0, length: 100, event: '甲局', red: '红甲', black: '黑甲' }
+    ])
+    renderPage()
+    await screen.findByText('PGN · big.pgns（多局合一）')
+    fireEvent.click(screen.getByText('PGN · big.pgns（多局合一）'))
+    await screen.findByText('甲局')
+    fireEvent.click(screen.getByText('甲局'))
+    // openPgnGame：readPgnGame → worker 解析 → 详情
+    await screen.findByTestId('puzzle-position')
+    expect(screen.getByTestId('puzzle-position').textContent).toBe('0 / 1 着')
   })
 })

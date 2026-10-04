@@ -39,7 +39,20 @@ vi.mock('@renderer/workers/parserClient', () => ({
     async parseBatch(files: Array<{ name: string; source: string }>): Promise<unknown> {
       return {
         puzzles: files.map((f) =>
-          f.name.includes('乙')
+          f.name === 'game-1.pgn'
+            ? null // 测试用失败分支
+            : f.name.startsWith('game-')
+            ? {
+                id: `pgn/${f.source}/单局`,
+                initialFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
+                solutionMoves: ['h2e2', 'h9g7'],
+                title: '单局',
+                description: null,
+                source: f.source,
+                format: 'pgn',
+                difficulty: 1
+              }
+            : f.name.includes('乙')
             ? {
                 id: `xqf/${f.source}/乙`,
                 initialFen: '4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1',
@@ -186,5 +199,48 @@ describe('语料库 store 集成（分批解析 + generation）', () => {
     const state = useCorpusBrowser.getState()
     expect(state.pgnPath).toBe('/corpus/big.pgns')
     expect(state.selectedCategory).toBe(1)
+  })
+
+  it('从 PGN 分类切回 XQF 分类：pgn 视图状态必须被清掉（回归：切换不刷新 bug）', async () => {
+    await useCorpusBrowser.getState().load()
+    await useCorpusBrowser.getState().openPgnCategory(1)
+    expect(useCorpusBrowser.getState().pgnPath).not.toBeNull()
+    await useCorpusBrowser.getState().selectCategory(0)
+    const state = useCorpusBrowser.getState()
+    expect(state.pgnPath).toBeNull()
+    expect(state.pgnIndex).toEqual([])
+    expect(state.viewingPuzzle).toBeNull()
+    // 反向：再进 PGN 分类照常工作
+    await useCorpusBrowser.getState().openPgnCategory(1)
+    expect(useCorpusBrowser.getState().pgnPath).toBe('/corpus/big.pgns')
+  })
+
+  it('openXqfPuzzle：以 entries/puzzles 下标打开详情（微任务结算）；closePuzzle 关闭', async () => {
+    await useCorpusBrowser.getState().load()
+    const flushMicro = (): Promise<void> => new Promise((r) => queueMicrotask(() => queueMicrotask(r)))
+    useCorpusBrowser.getState().openXqfPuzzle(1)
+    await flushMicro()
+    expect(useCorpusBrowser.getState().viewingPuzzle?.title).toBe('乙')
+    useCorpusBrowser.getState().openXqfPuzzle(0) // 甲解析失败位为 null：不打开
+    await flushMicro()
+    expect(useCorpusBrowser.getState().viewingPuzzle?.title).toBe('乙')
+    useCorpusBrowser.getState().closePuzzle()
+    await flushMicro()
+    expect(useCorpusBrowser.getState().viewingPuzzle).toBeNull()
+  })
+
+  it('openPgnGame：读取单局文本经 worker 解析进详情；解析失败给出错误', async () => {
+    await useCorpusBrowser.getState().load()
+    await useCorpusBrowser.getState().openPgnCategory(1)
+    // 该 store 测试文件顶部的 ParserClient mock：name 含"乙"返回结果，否则 null
+    await useCorpusBrowser.getState().openPgnGame({ offset: 1, length: 2, event: null, red: null, black: null })
+    expect(useCorpusBrowser.getState().viewingError).toBe('该局解析失败或无可演示走法')
+
+    // 成功分支：mock 对 game-*.pgn 返回"单局"
+    await useCorpusBrowser.getState().openPgnGame({ offset: 2, length: 2, event: null, red: null, black: null })
+    const view = useCorpusBrowser.getState().viewingPuzzle
+    expect(view?.title).toBe('单局')
+    expect(view?.format).toBe('pgn')
+    expect(view?.moveCount).toBe(2)
   })
 })

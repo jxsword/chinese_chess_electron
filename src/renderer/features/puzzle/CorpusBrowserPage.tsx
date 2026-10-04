@@ -2,22 +2,23 @@
  * 语料库浏览页（对应 corpus_browser_page.dart + corpus_pgn_browser_page.dart，06 文档 §6）。
  *
  * 一级入口为分类列表；XQF 分类：搜索/仅残局/难度筛选/三种排序 + 分批解析进度；
- * PGN 大文件分类：按局索引分页浏览（每页 50）+ 单局按需解析预览。
+ * PGN 大文件分类：按局索引分页浏览（每页 50）；单局/XQF 条目点击进入详情重放
+ * （PuzzleDetailView，基础播放；完整演示播放器在 M6）。
  * 语料缺失时显示引导（期望路径 + 下载按钮约 45MB + 选择其他棋谱目录）。
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@renderer/ipc/client'
 import {
-  PGN_PAGE_SIZE,
   pgnPageSlice,
   useCorpusBrowser,
   visibleItems,
   type CorpusSortMode
 } from '@renderer/stores/corpusBrowser'
+
 import { difficultyText } from '@packages/parsers'
+import { PuzzleDetailView } from './PuzzleDetailView'
 import { CORPUS_DOWNLOAD_URL } from '@shared/constants'
-import type { PgnIndexEntry } from '@shared/ipc/types'
 
 const DIFFICULTY_LABELS = ['', '入门', '初级', '中级', '高级', '职业'] as const
 
@@ -152,8 +153,14 @@ function XqfPanel(): React.JSX.Element {
         </div>
       )}
       <div style={{ overflowY: 'auto', maxHeight: '62vh' }}>
-        {items.map(({ entry, puzzle }) => (
-          <div key={entry.path} className="cc-card" style={{ padding: '8px 12px', marginBottom: 6 }}>
+        {items.map(({ index, entry, puzzle }) => (
+          <div
+            key={entry.path}
+            className="cc-card"
+            style={{ padding: '8px 12px', marginBottom: 6, cursor: 'pointer' }}
+            onClick={() => state.openXqfPuzzle(index)}
+            data-testid={`puzzle-item-${index}`}
+          >
             <strong>{puzzle.title ?? entry.displayName}</strong>
             <div style={{ fontSize: 12, color: 'var(--cc-seed-dark)' }}>
               {entry.source} · {puzzle.moveCount} 着 · 难度 {difficultyText(puzzle.difficulty)} ·{' '}
@@ -167,39 +174,14 @@ function XqfPanel(): React.JSX.Element {
   )
 }
 
-/** 单局预览（点击分页条目后按需解析，M6 演示播放器的占位呈现）。 */
-function PgnGamePreview({ path, entry }: { path: string; entry: PgnIndexEntry }): React.JSX.Element | null {
-  const [preview, setPreview] = useState<string | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    setPreview(null)
-    void (async () => {
-      try {
-        const text = await api.corpus.readPgnGame(path, entry)
-        if (cancelled) return
-        setPreview(text.split('\n').filter((l) => l.length > 0 && !l.startsWith('[')).join(' ').slice(0, 400))
-      } catch {
-        if (!cancelled) setPreview('（单局读取失败）')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [path, entry])
-  if (preview === null) return null
-  return <div style={{ fontSize: 12, color: 'var(--cc-seed-dark)', marginBottom: 6 }}>{preview}…</div>
-}
-
 /** PGN 大文件分类面板：搜索 + 分页浏览（corpus_pgn_browser_page.dart:172-223）。 */
 function PgnPanel(): React.JSX.Element | null {
   const state = useCorpusBrowser()
-  const [openEntry, setOpenEntry] = useState<number>(-1)
   const { slice, totalPages, total } = useMemo(
     () => pgnPageSlice(state.pgnIndex, state.pgnQuery, state.pgnPage),
     [state.pgnIndex, state.pgnQuery, state.pgnPage]
   )
   if (state.pgnPath === null) return null
-  const pgnPath: string = state.pgnPath
   const pageEntries = slice
 
   return (
@@ -217,23 +199,20 @@ function PgnPanel(): React.JSX.Element | null {
       {state.pgnLoading && <div>索引扫描中…</div>}
       <div style={{ overflowY: 'auto', maxHeight: '56vh' }}>
         {pageEntries.map((entry, i) => {
-          const globalIdx = state.pgnPage * PGN_PAGE_SIZE + i
           const title = entry.event ?? `${entry.red ?? '?'} vs ${entry.black ?? '?'}`
           return (
-            <div key={`${entry.offset}-${i}`}>
-              {openEntry === globalIdx && <PgnGamePreview path={pgnPath} entry={entry} />}
-              <button
-                type="button"
-                className="cc-card"
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', marginBottom: 4, cursor: 'pointer' }}
-                onClick={() => setOpenEntry(openEntry === globalIdx ? -1 : globalIdx)}
-              >
-                <strong>{title}</strong>
-                <span style={{ fontSize: 12, marginLeft: 8, color: 'var(--cc-seed-dark)' }}>
-                  {entry.red ?? '?'} vs {entry.black ?? '?'}
-                </span>
-              </button>
-            </div>
+            <button
+              key={`${entry.offset}-${i}`}
+              type="button"
+              className="cc-card"
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', marginBottom: 4, cursor: 'pointer' }}
+              onClick={() => void state.openPgnGame(entry)}
+            >
+              <strong>{title}</strong>
+              <span style={{ fontSize: 12, marginLeft: 8, color: 'var(--cc-seed-dark)' }}>
+                {entry.red ?? '?'} vs {entry.black ?? '?'}
+              </span>
+            </button>
           )
         })}
       </div>
@@ -261,6 +240,7 @@ function PgnPanel(): React.JSX.Element | null {
 export function CorpusBrowserPage(): React.JSX.Element {
   const navigate = useNavigate()
   const state = useCorpusBrowser()
+  console.log('PAGE_RENDER', JSON.stringify({ viewing: state.viewingPuzzle?.title ?? null, exists: state.corpusExists }))
 
   useEffect(() => {
     void state.load()
@@ -298,7 +278,22 @@ export function CorpusBrowserPage(): React.JSX.Element {
               ))}
             </div>
           </div>
-          {state.pgnPath !== null ? <PgnPanel /> : <XqfPanel />}
+          {state.viewingPuzzle !== null ? (
+            <PuzzleDetailView puzzle={state.viewingPuzzle} onBack={() => state.closePuzzle()} />
+          ) : state.viewingLoading ? (
+            <div style={{ flex: 1 }}>单局解析中…</div>
+          ) : state.viewingError !== null ? (
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'var(--cc-error)', marginBottom: 8 }}>{state.viewingError}</div>
+              <button type="button" className="cc-btn" onClick={() => state.closePuzzle()}>
+                返回列表
+              </button>
+            </div>
+          ) : state.pgnPath !== null ? (
+            <PgnPanel />
+          ) : (
+            <XqfPanel />
+          )}
         </div>
       )}
     </div>

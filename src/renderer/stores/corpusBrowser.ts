@@ -50,6 +50,10 @@ interface CorpusBrowserState {
   pgnPage: number
   pgnLoading: boolean
   pgnQuery: string
+  /** 详情重放视图（XQF 条目或 PGN 单局解析结果）；null = 列表视图 */
+  viewingPuzzle: ParsedPuzzleView | null
+  viewingLoading: boolean
+  viewingError: string | null
 
   load: () => Promise<void>
   pickCustomDirectory: (directoryPath: string) => Promise<void>
@@ -61,6 +65,11 @@ interface CorpusBrowserState {
   openPgnCategory: (index: number) => Promise<void>
   setPgnPage: (page: number) => void
   setPgnQuery: (query: string) => void
+  /** 打开 XQF 条目详情（entries/puzzles 下标对齐） */
+  openXqfPuzzle: (index: number) => void
+  /** 打开 PGN 大文件中索引指向的单局：读取 + worker 解析 + 进入详情 */
+  openPgnGame: (entry: PgnIndexEntry) => Promise<void>
+  closePuzzle: () => void
 }
 
 let generation = 0
@@ -79,9 +88,9 @@ export function visibleItems(state: {
   onlyEndgame: boolean
   difficultyFilter: number
   sortMode: CorpusSortMode
-}): Array<{ entry: CorpusEntry; puzzle: ParsedPuzzleView }> {
+}): Array<{ index: number; entry: CorpusEntry; puzzle: ParsedPuzzleView }> {
   const query = state.query.trim()
-  const items: Array<{ entry: CorpusEntry; puzzle: ParsedPuzzleView }> = []
+  const items: Array<{ index: number; entry: CorpusEntry; puzzle: ParsedPuzzleView }> = []
   for (let i = 0; i < state.entries.length; i++) {
     const puzzle = state.puzzles[i]
     if (puzzle === undefined || puzzle === null) continue
@@ -90,7 +99,7 @@ export function visibleItems(state: {
     if (query.length > 0 && !(puzzle.title ?? state.entries[i].displayName).includes(query)) {
       continue
     }
-    items.push({ entry: state.entries[i], puzzle })
+    items.push({ index: i, entry: state.entries[i], puzzle })
   }
   switch (state.sortMode) {
     case 'name':
@@ -153,6 +162,9 @@ export const useCorpusBrowser = create<CorpusBrowserState>()((set, get) => ({
   pgnPage: 0,
   pgnLoading: false,
   pgnQuery: '',
+  viewingPuzzle: null,
+  viewingLoading: false,
+  viewingError: null,
 
   load: async () => {
     const myGen = ++generation
@@ -197,12 +209,22 @@ export const useCorpusBrowser = create<CorpusBrowserState>()((set, get) => ({
     const myGen = ++generation
     const category = get().categories[index]
     if (category === undefined) return
+    // 切回 XQF 分类必须清掉 PGN 大文件视图状态，否则右侧面板停留在 PgnPanel
+    // （pgnPath 残留）——修复"1/4 分类切换后不刷新"。
+    set({
+      selectedCategory: index,
+      entries: [],
+      puzzles: [],
+      progress: -1,
+      pgnPath: null,
+      pgnIndex: [],
+      pgnPage: 0,
+      viewingPuzzle: null
+    })
     if (category.kind !== 'xqfDirectory') {
       // PGN 大文件分类只记录选中（页面层跳转 openPgnCategory），不批量解析。
-      set({ selectedCategory: index, entries: [], puzzles: [], progress: -1 })
       return
     }
-    set({ selectedCategory: index, entries: [], puzzles: [], progress: -1 })
 
     let entries: CorpusEntry[]
     try {
@@ -272,7 +294,8 @@ export const useCorpusBrowser = create<CorpusBrowserState>()((set, get) => ({
       pgnSource: category.source,
       pgnIndex: [],
       pgnPage: 0,
-      pgnLoading: true
+      pgnLoading: true,
+      viewingPuzzle: null
     })
     try {
       const pgnIndex = await api.corpus.pgnIndex(category.path)
@@ -283,7 +306,51 @@ export const useCorpusBrowser = create<CorpusBrowserState>()((set, get) => ({
   },
 
   setPgnPage: (page) => set({ pgnPage: page }),
-  setPgnQuery: (query) => set({ pgnQuery: query, pgnPage: 0 })
+  setPgnQuery: (query) => set({ pgnQuery: query, pgnPage: 0 }),
+
+  openXqfPuzzle: (index) => {
+    const { entries, puzzles } = get()
+    const entry = entries[index]
+    const puzzle = puzzles[index]
+    if (entry === undefined || puzzle === null || puzzle === undefined) return
+    // 微任务里结算：点击事件的同步冒泡在旧 DOM 上完成后再切换视图，
+    // 避免测试环境（fireEvent 同步 flush）下冒泡点击"穿越"进新树误触返回按钮。
+    queueMicrotask(() => {
+      set({ viewingPuzzle: puzzle, viewingError: null, viewingLoading: false })
+    })
+  },
+
+  openPgnGame: async (entry) => {
+    const { pgnPath, pgnSource } = get()
+    if (pgnPath === null) return
+    const myGen = ++generation // 切分类/换局后迟到结果按代数丢弃（00 §3.2）
+    set({ viewingLoading: true, viewingError: null, viewingPuzzle: null })
+    try {
+      const text = await api.corpus.readPgnGame(pgnPath, entry)
+      if (myGen !== generation) return
+      const client = getParserClient()
+      const bytes = new TextEncoder().encode(text)
+      const result = await client.parseBatch([
+        { name: `game-${entry.offset}.pgn`, source: pgnSource, bytes }
+      ])
+      if (myGen !== generation) return
+      const parsed = result.puzzles[0] ?? null
+      if (parsed === null) {
+        set({ viewingLoading: false, viewingError: '该局解析失败或无可演示走法' })
+        return
+      }
+      set({ viewingPuzzle: toView(parsed, pgnSource), viewingLoading: false })
+    } catch {
+      if (myGen === generation) set({ viewingLoading: false, viewingError: '单局读取失败' })
+    }
+  },
+
+  closePuzzle: () => {
+    // 与 openXqfPuzzle 同理：微任务结算，避免点击事件冒泡期间同步换树。
+    queueMicrotask(() => {
+      set({ viewingPuzzle: null, viewingError: null, viewingLoading: false })
+    })
+  }
 }))
 
 /** 把 worker 解析结果投影为视图模型（isEndgamePuzzle 预计算，避免渲染期重复判定）。 */
