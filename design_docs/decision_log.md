@@ -179,3 +179,24 @@
 - 结论: Linux 上 cc:corpus:pickDirectory、cc:dialog:saveFile、cc:dialog:readFile 三通道全部走自绘选择器（saveFile/readFile 此前无 handler，导出 PGN 文件一并补齐）；Windows/macOS 保持原生 dialog。GTK_USE_PORTAL=0 保留为兜底（防任何残余原生调用再生成僵尸弹窗）。端到端验证: executeJavaScript 驱动 上级目录→选择此目录，结算路径正确；XTEST 无法模拟真实点击（XWayland 不投递合成输入），真实点击路径由"与主窗口同类 Chromium 表面"保证。
 - 影响: src/main/services/dialogPicker.ts、src/main/ipc/dialog.ts（新增）、ipc/corpus.ts、main/index.ts；单测 7 条；手测清单 #2/#12 同步。
 - 记录时间 / 会话: 2026-10-05（M5 手测缺陷修复会话）
+
+## DR-018 2026-10-04 内置 AI 重复变招三层递进优化引入（L1+L2+L3，含长将判负/重复判和） [状态: 生效]
+- 背景: 对局中内置 AI 存在重复变招问题（局内来回走重复局面、搜索把长将循环线误评为有利路线）；且真实对局缺少长将判负与重复局面判和（02 §6 规则缺口）。审查草稿（原 built-in-ai-move-repetition-optimization-design.md，已移入 tmp/）发现其与代码库多处脱节（难度 1-7 错位、假设 Zobrist/转置表已存在、页面侧算哈希双实现、"复用现有 looksLikeRepetition"归属错位等），按代码实况重新设计。本决策修订 AGENTS.md 中"02 §6 规则缺口本期不实现"条款。
+- 选项:
+  - A. 仅 L1+L2（搜索内检测 + 根节点历史回避），不做 L3: 优点: 不触碰 02 §6 红线、无 UI 改动、风险最小。缺点: 真实对局仍无重复判和/长将判负，AI 回避重复只是"礼让"。弃（用户明确需要规则判罚闭环）。
+  - B. A + 局间多样性补充（低/中难度开局随机）: 优点: 兼顾"每局一个样"。缺点: 降低确定性、偏离原版 Dart 行为。弃（难度 1-2 已有 randomness 窗口，局间单调非本期诉求）。
+  - C. 全量方案 L1+L2+L3（已采纳）: 优点: 搜索效率、着法多样性、规则合规全链路闭环；提示词循环警示"长将判负/重复判和"由预告性表述变为真实规则。缺点: 违反原"02 §6 本期不实现"约束，需修订 AGENTS.md/02/03/08/09/11 五处文档，工作量约为 A 的 3 倍。
+- 结论: 采纳 C，附裁决: ①L3 v1 只做长将判负 + 重复局面判和（含双方长将不变作和、第 4 次出现强制判和），**长捉不做**（攻击/保护/兑献分辨复杂度接近小型静态分析引擎，误判直接判负，02 §6 维持"不实现"）；②删除草稿"无解长将兜底判负"（发明规则，该场景自然触发三次重复裁决）；③05 §2 提示词循环警示文本逐字不动（铁律 #2），"长捉判负"一句与未实现的长捉的出入在此记录；④强制变着设底线 −500 厘兵（防送子）；⑤兼容性铁律: historyFens 不传时引擎行为与旧版逐位一致，289 既有测试与 Dart 金标准口径零改动保留。
+- 影响: src/packages/engine/{zobrist,search,chessAi,engineBoard}.ts、src/packages/rules/repetitionJudge.ts（新增）、src/renderer/workers/engineProtocol.ts/engineClient.ts、src/renderer/stores/gameVm.ts（fenHistory + agreeDraw）、src/renderer/players/chessAiPlayer.ts、src/renderer/features/board/useRepetitionJudge.ts（新增）+ 四对局页；文档 AGENTS.md、02 §3/§5/§6、03 §2/§3.3/§5.1/§6/§8、08 §3.1/§7、09 §2.2、11 §2（M3 表 T3.5~T3.10，34→40）、README 索引。设计全文: built-in-ai-move-repetition-optimization-design-final.md。
+- 记录时间 / 会话: 2026-10-04（重复变招优化设计会话）
+
+## DR-019 2026-10-04 局面键采用 Zobrist hi/lo 双 32 位 + 固定种子 PRNG，引擎侧单源 [状态: 生效]
+- 背景: L1/L2 需要局面键。代码库现状: engineBoard 无任何哈希，求解器用 FEN 字符串做键（endgameSolver.ts:149）；JS number 位运算 32 位安全，64 位需拆分或 BigInt。
+- 选项:
+  - A. EngineBoard 内 Zobrist hi/lo 双 32 位（已采纳）: 优点: 搜索内每节点 O(1)，业界标准；applyMove/undoMove 严格互逆（engineBoard.ts:204-225），增量异或挂点干净；固定种子 xorshift32 键序列跨进程确定可快照。缺点: 新增约百行哈希代码，需增量/重建一致性对拍测试。
+  - B. FEN 字符串作键: 优点: 零新代码、绝对正确。缺点: 每节点生成 FEN 太贵（90 格字符串构造），搜索内路径检测不可用，等于放弃 L1 大部分价值。弃。
+  - C. BigInt 64 位 Zobrist: 优点: 语义直观。缺点: 逐节点 BigInt 分配在热路径不可接受。弃。
+  - 另裁决"谁来算键": 原草稿由页面侧算 Zobrist 传 historyKeys——哈希逻辑双实现必然漂移。改为页面只传 historyFens（FEN 已是 worker 协议原语），键的生成收口在引擎内部，单一事实源。
+- 结论: 采纳 A + 引擎侧单源。表索引 (pieceCode+7)*90+sq（带符号编码直接索引，不导出 KIND_CODE），含先手方键；undoMove 同式逆序异或（异或自逆）。
+- 影响: src/packages/engine/zobrist.ts（新增）、engineBoard.ts（hashLo/hashHi 增量维护）、search.ts/chessAi.ts 消费；test/engine/zobrist.spec.ts 对拍（确定性快照 + 随机对局增量===重建 + apply/undo 往返）。
+- 记录时间 / 会话: 2026-10-04（重复变招优化设计会话）

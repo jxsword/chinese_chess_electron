@@ -18,6 +18,7 @@
 | 08 | [UI与交互设计](08-UI与交互设计.md) | 导航、棋盘动画时序、各页面交互、防错清单 | 4 |
 | 09 | [测试方案](09-测试方案.md) | 289 用例映射、金标准对拍、mock SSE、E2E、质量门 | 1 |
 | 10 | [实施路线图](10-实施路线图.md) | M0~M7 里程碑、风险表、验收基线 | 1 |
+| 附 | [重复变招优化设计（final）](built-in-ai-move-repetition-optimization-design-final.md) | Zobrist/L1 搜索内检测/L2 历史回避/L3 规则裁决（DR-018/019，T3.5~T3.10） | 5 |
 | — | [decision_log.md](decision_log.md) | DR-001~004 决策记录 | — |
 
 **合计 37 张 mermaid 图（约 2100 行）。**
