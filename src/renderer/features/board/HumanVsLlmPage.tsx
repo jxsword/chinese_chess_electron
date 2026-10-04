@@ -23,6 +23,7 @@ import { loadLlmSettings, saveLlmSettings } from '@renderer/stores/llmSettings'
 import { EngineClient } from '@renderer/workers/engineClient'
 import { ChessAiPlayer } from '@renderer/players/chessAiPlayer'
 import { createIpcLlmTransport } from '@renderer/llm/llmTransport'
+import { formatThinkingSuffix, useThinkingElapsed, type AttemptProgress } from '@renderer/llm/useThinkingStatus'
 import { LlmConfigCard } from '@renderer/features/settings/LlmConfigCard'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
@@ -72,6 +73,7 @@ export function HumanVsLlmPage(): React.JSX.Element {
   const [config, setConfig] = useState<LlmEndpointConfig | null>(null)
   const [settings, setSettings] = useState<PageSettings | null>(null)
   const [isLlmThinking, setLlmThinking] = useState(false)
+  const [attempt, setAttempt] = useState<AttemptProgress | null>(null)
   const [llmNote, setLlmNote] = useState('')
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -97,6 +99,8 @@ export function HumanVsLlmPage(): React.JSX.Element {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   configRef.current = config
   settingsRef.current = settings
+
+  const elapsed = useThinkingElapsed(isLlmThinking)
 
   const showToast = useCallback((message: string): void => {
     if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current)
@@ -184,6 +188,7 @@ export function HumanVsLlmPage(): React.JSX.Element {
     vm.lockInput()
     thinkingRef.current = true
     setLlmThinking(true)
+    setAttempt(null)
     setLlmNote('')
 
     const player = new HybridLlmPlayer(
@@ -196,7 +201,8 @@ export function HumanVsLlmPage(): React.JSX.Element {
         advisorDifficulty: st.advisorDifficulty,
         maxAttempts: st.maxAttempts,
         fallback: st.fallback,
-        builtinAiSource: () => new ChessAiPlayer(client, 3)
+        builtinAiSource: () => new ChessAiPlayer(client, 3),
+        onAttempt: (n, total) => setAttempt({ n, total })
       },
       { authSlot: BLACK_SLOT } // 掩码 Key 回读时主进程按槽位注入（DR-010）
     )
@@ -340,7 +346,7 @@ export function HumanVsLlmPage(): React.JSX.Element {
           : '对局结束：和棋'
     statusClass = 'cc-status-end'
   } else if (isLlmThinking) {
-    statusText = `黑方 ${modelLabel} 正在思考…`
+    statusText = `黑方 ${modelLabel} 正在思考…${formatThinkingSuffix(elapsed, attempt)}`
     statusClass = 'cc-status-thinking'
   } else if (llmNote !== '') {
     statusText = llmNote

@@ -108,6 +108,8 @@ export interface LlmPlayerOptions {
   fallback: LlmFallback
   /** builtinAi 降级时的内置 AI 棋手工厂（对局页注入 ChessAiPlayer(difficulty 3)）。 */
   builtinAiSource: () => MoveSource
+  /** 每次尝试开始时的进度回调（思考型模型单次可达数分钟，UI 借此显示"第 N/M 次尝试"） */
+  onAttempt?: (attempt: number, totalAttempts: number) => void
 }
 
 export class LlmPlayer implements MoveSource {
@@ -150,6 +152,7 @@ export class LlmPlayer implements MoveSource {
 
     let lastNote: string | undefined
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      this.options.onAttempt?.(attempt, this.maxAttempts)
       let content: string
       try {
         content = await this.client.chatOnce(system, user, { useV2: this.usePromptV2 })

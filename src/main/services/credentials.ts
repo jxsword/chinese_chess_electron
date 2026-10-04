@@ -84,16 +84,22 @@ export class CredentialsService {
   /**
    * 整体加密写入槽位；安全存储不可用时走明文回退文件（DR-011）。
    * 返回实际落盘方式，供界面如实告知用户。
+   *
+   * 掩码合并（DR-013）：渲染层回读的 apiKey 是掩码（****+末4位），页面
+   * 防抖保存/卸载回写会把整个配置原样写回——若不合并，掩码字符串会覆盖
+   * 真实 Key（重启后 Key 失效）。apiKey 呈掩码形态时保留存储中的原 Key，
+   * 仅更新其余字段；无原 Key 可恢复时按空 Key 处理。
    */
   set(slot: SecureSlot, payload: LlmEndpointConfig): SecureSetResult {
+    const merged = this.mergeMaskedKey(slot, payload)
     if (this.cryptor.isAvailable()) {
       const file = this.readFile()
-      file[slot] = this.cryptor.encrypt(JSON.stringify(payload))
+      file[slot] = this.cryptor.encrypt(JSON.stringify(merged))
       this.writeFile(file)
       return { stored: 'encrypted' }
     }
     const plain = this.readPlainFile()
-    plain[slot] = payload
+    plain[slot] = merged
     this.writePlainFile(plain)
     if (!this.plainWarned) {
       this.plainWarned = true
@@ -103,6 +109,14 @@ export class CredentialsService {
       )
     }
     return { stored: 'plainFallback' }
+  }
+
+  /** 掩码 Key 合并：掩码形态（**** 前缀）→ 沿用存储中的原 Key；无原 Key → 空。 */
+  private mergeMaskedKey(slot: SecureSlot, payload: LlmEndpointConfig): LlmEndpointConfig {
+    const key = payload.apiKey.trim()
+    if (!key.startsWith('****')) return payload
+    const existing = this.getRaw(slot)
+    return { ...payload, apiKey: existing?.apiKey ?? '' }
   }
 
   delete(slot: SecureSlot): void {

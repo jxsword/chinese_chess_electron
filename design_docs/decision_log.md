@@ -118,3 +118,15 @@
 - 边界: 仅"三字段全空（含纯空白）"触发镜像；填了部分字段（如只填 Key）是独立无效配置，仍由开始校验拦截并提示；双方全空 → 相互镜像后仍空，照旧拦截。附带修复: HumanVsLlmPage/LlmVsLlmPage 构造 HybridLlmPlayer 时漏传 authSlot（DR-010 闭环缺口）——重启后掩码 Key 回读场景对局请求会全部失败，此前被"手输 Key 未重启"掩盖。
 - 影响: packages/llm/config.ts（isEmptyLlmConfig/resolveLlmSideConfig）、LlmVsLlmPage（start/runLoop/提示）、HumanVsLlmPage（authSlot）；测试 config.spec 4 例 + llmVsLlm.spec 07。
 - 记录时间 / 会话: 2026-10-04（M4 增量会话）
+
+## DR-013 2026-10-04 凭据掩码 Key 回写合并 + 思考过程透明化 [状态: 生效]
+- 背景: 实机反馈两个问题。① 重启后已存 Key 失效——渲染层回读的是掩码 Key（****+末4位），页面防抖保存/卸载回写把整个配置原样写回，掩码字符串覆盖了真实 Key（DR-011/012 之前未暴露，因用户手输 Key 未重启）；② 思考型模型（qwen3.8-max 未勾选"禁用思维链"）每手棋思维链 60s+，单次调用总上限=空闲×4=240s、×3 次重试后才降级，状态栏只有"思考中…"，观感"卡住不动"。
+- 选项（掩码回写）:
+  - A. 主进程 set 合并（已采纳）：apiKey 呈掩码形态时沿用存储中的原 Key，仅更新其余字段；无原 Key 可恢复按空 Key 处理。优点: 渲染层零改动、语义"掩码=未修改"符合凭据管理惯例; 缺点: 用户真实 Key 以 **** 开头的极端情形会被误判（实际不存在）。
+  - B. 渲染层跟踪"Key 未修改"标记、跳过 Key 字段回写: 需要跨渲染层传递修改状态，页面增多后易漏。弃。
+- 附加（透明化，不改协议）:
+  - testConnection 事件回调参数遮蔽修复（sendError 首参 requestId 被当作错误消息显示）+ 构建期错误（端点未配置）直接包装为失败消息；
+  - LlmPlayer/HybridLlmPlayer 增加 onAttempt(attempt,total) 进度回调，两页状态栏显示"第 N/M 次尝试 · 已等待 N 秒"——不改变 05 §3.2 超时协议与重试语义，仅消除"卡住"观感。
+- 结论: 方案 A + 透明化附加项。思考型模型的使用建议（勾选"禁用思维链"，或空闲超时 30s + 重试 1 次加速降级）写入用户文档，不改默认协议数值。
+- 影响: src/main/services/credentials.ts、llm-proxy.ts（testConnection）、packages/llm（onAttempt）、两页状态栏（useThinkingStatus）；测试 credentials 2 例、llmProxy 2 例、moveSource 1 例、格式化 2 例。
+- 记录时间 / 会话: 2026-10-04（M4 实机回归会话）

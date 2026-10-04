@@ -213,7 +213,13 @@ export class LlmProxy {
    * authSlot：掩码 Key 场景按槽位注入真实 Authorization（DR-010）。
    */
   async testConnection(config: LlmEndpointConfig, authSlot?: SecureSlot): Promise<LlmTestConnectionResult> {
-    const built = buildTestConnectionChat(config, authSlot)
+    let built: ReturnType<typeof buildTestConnectionChat>
+    try {
+      built = buildTestConnectionChat(config, authSlot)
+    } catch (e) {
+      // 端点/模型未配置等构建期错误：直接作为连接失败消息（不产生 requestId）。
+      return { ok: false, message: `连接失败：${e instanceof Error ? e.message : String(e)}` }
+    }
     const requestId = `test-conn-${Date.now()}-${++testConnCounter}`
     return await new Promise<LlmTestConnectionResult>((resolve) => {
       void this.chat(
@@ -222,7 +228,9 @@ export class LlmProxy {
           sendChunk: () => {},
           sendDone: () =>
             resolve({ ok: true, message: `连接成功，模型 ${config.model} 响应正常` }),
-          sendError: (message) => resolve({ ok: false, message: `连接失败：${annotateModelHint(message)}` })
+          // 注意双参签名：首参是 requestId，第二参才是错误消息（勿遮蔽）。
+          sendError: (_reqId, message) =>
+            resolve({ ok: false, message: `连接失败：${annotateModelHint(message)}` })
         }
       )
     })

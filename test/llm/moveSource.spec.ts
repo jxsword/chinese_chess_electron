@@ -185,6 +185,25 @@ describe('五层管线（第 3~6 层）', () => {
     expect(t.calls.length).toBe(3)
   })
 
+  it('07b onAttempt 回调逐次上报尝试进度', async () => {
+    const t = new FakeTransport()
+    for (let i = 0; i < 3; i++) t.script.push({ kind: 'text', text: '着法: e9-e0' })
+    const attempts: Array<[number, number]> = []
+    const player = new LlmPlayer(
+      cfg,
+      t,
+      {
+        fallback: 'resign',
+        maxAttempts: 3,
+        builtinAiSource: noopBuiltin,
+        onAttempt: (n, total) => attempts.push([n, total])
+      },
+      { newId: () => 'x' }
+    )
+    await player.nextMove(simpleBoard())
+    expect(attempts).toEqual([[1, 3], [2, 3], [3, 3]])
+  })
+
   it('08 连续失败 + resign 降级 → failed（该方判负终局）', async () => {
     const t = new FakeTransport()
     for (let i = 0; i < 3; i++) t.script.push({ kind: 'error', message: 'HTTP 500: boom' })

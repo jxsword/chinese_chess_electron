@@ -330,6 +330,30 @@ describe('llm-proxy（真实 undici 流式路径）', () => {
     expect(c.done.length).toBe(2)
   })
 
+  it('testConnection：错误消息为真实错误而非 requestId（遮蔽回归）', async () => {
+    const server = await startMockSseServer((_req, api) => {
+      api.respond(400, { 'Content-Type': 'text/plain' })
+      api.end('Streaming translation is not supported')
+    })
+    servers.push(server)
+    const proxy = makeProxy(() => 'sk-real')
+    const res = await proxy.testConnection(
+      { baseUrl: server.url, apiKey: '****abcd', model: 'm', disableThinking: true },
+      'llm_config_black'
+    )
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain('HTTP 400')
+    expect(res.message).toContain('翻译模型')
+    expect(res.message).not.toContain('test-conn')
+  })
+
+  it('testConnection：端点未配置 → 构建期错误直接作为失败消息', async () => {
+    const proxy = makeProxy()
+    const res = await proxy.testConnection({ baseUrl: '', apiKey: '', model: '', disableThinking: true })
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain('模型端点未配置')
+  })
+
   it('渲染层自持完整 Key（无 authSlot）：鉴权头原样透传', async () => {
     let seenAuth: string | undefined
     const server = await startMockSseServer(async (req, api) => {

@@ -144,6 +144,29 @@ describe('CredentialsService（safeStorage 三槽位语义）', () => {
     expect(reader.get('llm_config_black')).toBeNull()
   })
 
+  it('掩码 Key 合并（DR-013）：回写掩码不覆盖真实 Key', () => {
+    const svc = new CredentialsService(fakeCryptor(), filePath)
+    svc.set('llm_config_red', CONFIG)
+    // 模拟页面回读掩码后整配置回写（防抖保存/卸载回写路径）
+    const maskedReadback = svc.get('llm_config_red')!
+    expect(maskedReadback.apiKey).toBe('****abcd')
+    svc.set('llm_config_red', { ...maskedReadback, model: 'renamed-model' })
+    // 真实 Key 保留，其余字段已更新
+    expect(svc.getRaw('llm_config_red')!.apiKey).toBe(CONFIG.apiKey)
+    expect(svc.get('llm_config_red')!.model).toBe('renamed-model')
+    // 明文回退路径同样合并
+    const plainSvc = new CredentialsService(fakeCryptor(true), filePath)
+    plainSvc.set('llm_config_red', CONFIG)
+    plainSvc.set('llm_config_red', { ...svc.get('llm_config_red')!, model: 'again' })
+    expect(plainSvc.getRaw('llm_config_red')!.apiKey).toBe(CONFIG.apiKey)
+  })
+
+  it('掩码 Key 但存储中无原 Key → 按空 Key 处理（不落掩码字符串）', () => {
+    const svc = new CredentialsService(fakeCryptor(), filePath)
+    svc.set('llm_config_red', { ...CONFIG, apiKey: '****abcd' })
+    expect(svc.getRaw('llm_config_red')!.apiKey).toBe('')
+  })
+
   it('回退文件损坏 → 按未配置（不抛错）', () => {
     const svc = new CredentialsService(fakeCryptor(true), filePath)
     writeFileSync(`${filePath}.plain.json`, '{corrupt', 'utf8')

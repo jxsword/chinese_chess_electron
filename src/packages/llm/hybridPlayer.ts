@@ -60,6 +60,8 @@ export interface HybridLlmPlayerOptions {
   fallback: LlmFallback
   /** off 模式（纯 Prompt v2）降级链所需的内置 AI 棋手工厂。 */
   builtinAiSource: () => MoveSource
+  /** 每次尝试开始时的进度回调（UI 显示"第 N/M 次尝试"用）。 */
+  onAttempt?: (attempt: number, totalAttempts: number) => void
 }
 
 export interface HybridLlmClientOptions {
@@ -168,6 +170,7 @@ export class HybridLlmPlayer implements MoveSource {
     let pick: Move | undefined
     let pickCp: number | undefined
     for (let attempt = 1; attempt <= this.maxAttempts && pick === undefined; attempt++) {
+      this.options.onAttempt?.(attempt, this.maxAttempts)
       let content: string
       try {
         content = await this.client.chatOnce(system, user, { useV2: true })

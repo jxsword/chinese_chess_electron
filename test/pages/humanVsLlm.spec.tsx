@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { HumanVsLlmPage } from '@renderer/features/board/HumanVsLlmPage'
 import { api } from '@renderer/ipc/client'
 import { LLM_SETTING_KEYS } from '@packages/llm'
+import { formatThinkingSuffix } from '@renderer/llm/useThinkingStatus'
 
 const CHECK_FEN = '4k4/9/9/9/4r4/9/9/9/9/4K4 w - - 0 1' // 黑车将军红帅、轮红
 
@@ -52,6 +53,17 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+})
+
+describe('思考状态后缀格式化（思考型模型透明化）', () => {
+  it('未满 3 秒且首次尝试 → 空后缀', () => {
+    expect(formatThinkingSuffix(1, { n: 1, total: 3 })).toBe('')
+    expect(formatThinkingSuffix(0, null)).toBe('')
+  })
+  it('≥3 秒显示已等待；重试附带第 N/M 次尝试', () => {
+    expect(formatThinkingSuffix(65, null)).toBe('（已等待 65 秒）')
+    expect(formatThinkingSuffix(65, { n: 2, total: 3 })).toBe('（第 2/3 次尝试 · 已等待 65 秒）')
+  })
 })
 
 describe('人机对战（大模型）页（08 §3.3）', () => {

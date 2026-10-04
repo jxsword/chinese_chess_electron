@@ -31,6 +31,7 @@ import { loadLlmSettings, saveLlmSettings } from '@renderer/stores/llmSettings'
 import { EngineClient } from '@renderer/workers/engineClient'
 import { ChessAiPlayer } from '@renderer/players/chessAiPlayer'
 import { createIpcLlmTransport } from '@renderer/llm/llmTransport'
+import { formatThinkingSuffix, useThinkingElapsed, type AttemptProgress } from '@renderer/llm/useThinkingStatus'
 import { LlmConfigCard } from '@renderer/features/settings/LlmConfigCard'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
@@ -70,6 +71,8 @@ export function LlmVsLlmPage(): React.JSX.Element {
   const [settings, setSettings] = useState<LlmGameSettings | null>(null)
   const [running, setRunning] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [moveActive, setMoveActive] = useState(false)
+  const [attempt, setAttempt] = useState<AttemptProgress | null>(null)
   const [statusText, setStatusText] = useState('等待开始')
   const [redNote, setRedNote] = useState('')
   const [blackNote, setBlackNote] = useState('')
@@ -97,6 +100,8 @@ export function LlmVsLlmPage(): React.JSX.Element {
   redRef.current = redConfig
   blackRef.current = blackConfig
   settingsRef.current = settings
+
+  const elapsed = useThinkingElapsed(moveActive)
 
   const showToast = useCallback((message: string): void => {
     if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current)
@@ -231,14 +236,18 @@ export function LlmVsLlmPage(): React.JSX.Element {
       )
       playerRef.current = player
       let result: MoveSourceResult
+      setMoveActive(true)
+      setAttempt(null)
       try {
         result = await player.nextMove(boardSnapshot, history)
       } catch (e) {
+        setMoveActive(false)
         if (e instanceof Error && e.message === 'llm chat canceled') return
         if (seq !== gameSeqRef.current) return
         onSideFailed(isRedTurn, `走子来源异常：${String(e instanceof Error ? e.message : e)}`)
         return
       }
+      setMoveActive(false)
 
       // 请求在途期间可能已停止/暂停/重开：作废本次结果。
       if (seq !== gameSeqRef.current) return
@@ -390,7 +399,10 @@ export function LlmVsLlmPage(): React.JSX.Element {
         </button>
       </header>
       <div className="cc-status-bar cc-status-note" role="status" data-testid="llm-loop-status">
-        <span>{resultText ?? statusText}</span>
+        <span>
+          {resultText ?? statusText}
+          {moveActive && formatThinkingSuffix(elapsed, attempt)}
+        </span>
         {running && !paused && <span className="cc-spinner" aria-hidden="true" />}
       </div>
       <div className="cc-game-body">
