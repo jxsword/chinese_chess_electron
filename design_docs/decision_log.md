@@ -154,3 +154,16 @@
 - 结论: 方案 A。实现期发现并修正一处真实偏差：初版 TS 解析器把"布局置换"应用到了所有加密版本（Dart 原版仅版本≥12 置换，v0x0B/C 仅减 keyXY）——往返用例对 v0x0C 的强断言（置换与不置换必须产生不同字节序）在该偏差下仍会假绿，最终靠"样例锚点 v0x0D + 按版本分治的往返断言"共同锁定。
 - 影响: src/packages/parsers/xqfParser.ts、test/helpers/xqfBuilder.ts、test/fixtures/sample_xqf.xqf、test/parsers/xqfParser.spec.ts（9 条）；iconv-lite 依赖由任务提示词明确授权（GB18030 解码，packages 纯 TS 三端可用——decode 直接收 Uint8Array，不经 Buffer）。
 - 记录时间 / 会话: 2026-10-04（M5 T5.1-T5.3 会话）
+
+## DR-016 2026-10-05 语料文件的进程分工与 zip 解压零依赖方案 [状态: 生效]
+- 背景: T5.4/5.5 落地时,原版 CorpusRepository（Dart isolate 有 fs 权限,读+解析同处一线程）在 Electron 沙箱下不可直接映射:渲染层 Worker 无 fs,主进程有 fs 但不该做批量 CPU。zip 解压还需决定依赖方案（Dart 用 package:archive）。
+- 选项（进程分工）:
+  - A. fs 全收敛主进程 + 字节过 IPC + CPU 在渲染层 Worker（已采纳）：cc:corpus:readFiles 批量读 128 个 .xqf 字节 → parser.worker 解析（06 §6 分批图 1:1）；大 PGN 流式索引（scanGameOffsets）留在主进程（读即扫,1MB 块 + 8MB 单行上限,内存有界）。优点: 与 06 §6 时序图一致、铁律 #7 兼顾（Worker 管批量解析,主进程只做 IO 型扫描）。缺点: 字节结构化克隆一次拷贝（每批 ≤2MB,可忽略）。
+  - B. 主进程 utilityProcess 做全部解析: 优点: 单进程内闭环。缺点: 新增一类进程形态、协议面膨胀,与 00 §3.2 Worker 协议冲突。弃。
+  - C. 渲染层直接持有字节列表一次读入: 违背 06 §4.4"不整读内存"。弃。
+- 选项（zip 依赖）:
+  - A. 内置 zlib + 手写最小中央目录解析器（已采纳）：只支持 store/deflate + 符号链接 mode 识别（zip64/加密条目显式抛错）。优点: 零新依赖（AGENTS 纪律）、zip-slip 防护与遍历同层可控; 缺点: ~200 行自维护代码（测试侧自带构造器往返覆盖）。
+  - B. adm-zip / fflate 等库: 优点: 省代码。缺点: 新依赖未经任务提示词列出,且 adm-zip 历史 zip-slip CVE 需要额外审计。弃。
+- 结论: 进程分工取 A、zip 取 A。附带约束: cc:corpus:readFiles 仅放行 .xqf/.pgn/.pgns 扩展名（渲染层路径不可信的最低防线）。
+- 影响: src/main/services/corpus.ts、corpusDownloader.ts、corpusZip.ts、src/renderer/workers/parser.worker.ts/parserProtocol.ts/parserClient.ts、src/renderer/stores/corpusBrowser.ts、features/puzzle/CorpusBrowserPage.tsx、cc:corpus 四通道（00 §3.1 已同步）。
+- 记录时间 / 会话: 2026-10-05（M5 T5.4/5.5 会话）
