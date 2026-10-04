@@ -54,16 +54,21 @@ export async function startMockSseServer(handler: MockSseHandler): Promise<MockS
           responded = true
         }
       }
+      // 取消/超时用例会中止客户端连接：socket 级错误（ECONNRESET/EPIPE/写后销毁）
+      // 对断言无意义（协议断言在客户端侧），静默吞掉防 unhandled error。
+      res.on('error', () => {})
       const api: MockSseApi = {
         write: (text) => {
           ensureHead()
-          return new Promise<void>((resolve, reject) => {
-            res.write(text, (err) => (err ? reject(err) : resolve()))
+          // 客户端已断开：best-effort，写入结果与测试断言无关，直接结算。
+          if (res.destroyed) return Promise.resolve()
+          return new Promise<void>((resolve) => {
+            res.write(text, () => resolve())
           })
         },
         end: (data?: string) => {
           ensureHead()
-          res.end(data)
+          if (!res.destroyed) res.end(data)
         },
         respond: (status, headers) => {
           res.writeHead(status, headers)
@@ -72,7 +77,7 @@ export async function startMockSseServer(handler: MockSseHandler): Promise<MockS
         res
       }
       await handler(requests[requests.length - 1]!, api)
-      if (!res.writableEnded) api.end()
+      if (!res.writableEnded && !res.destroyed) api.end()
     })().catch(() => {
       try {
         res.end()

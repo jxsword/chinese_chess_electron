@@ -140,7 +140,9 @@ describe('取消与迟到丢弃（00 §3.2 / 09 §2.4）', () => {
       release = resolve
     })
     fake.interceptor = (msg, pass) => {
-      if (msg.id === 'req-1') {
+      // 只压住 find 请求；同 id 的 cancel 消息必须放行（否则核心无从得知取消，
+      // gate 释放后会同步跑满难度 5 搜索——慢机（CI）必超 5s 测试超时）。
+      if (msg.id === 'req-1' && msg.type !== 'cancel') {
         void gate.then(pass)
         return
       }

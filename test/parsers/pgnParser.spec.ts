@@ -13,9 +13,13 @@ import {
 const initialFen =
   'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'
 
-/** fs 文件源（与主进程 corpus 服务同一形态的测试替身） */
+/** fs 文件源（与主进程 corpus 服务同一形态的测试替身）。
+ * 打开的 fd 登记进 openFds，由 afterEach 统一关闭——泄漏的 fd 会让
+ * Windows 的 rmSync 报 ENOTEMPTY（Linux 无此问题，属平台差异）。 */
+const openFds: number[] = []
 function fsSource(path: string): PgnFileSource {
   const fd = openSync(path, 'r')
+  openFds.push(fd)
   const size = fstatSync(fd).size
   return {
     byteLength: size,
@@ -135,8 +139,27 @@ describe('大文件按局索引', () => {
     dirs.push(dir)
     return dir
   }
-  afterEach(() => {
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  afterEach(async () => {
+    // 先关 fd 再删目录：Windows 句柄未关时 rmSync 偶发 ENOTEMPTY（AV/索引器
+    // 短暂持句），再带退避重试兜底。
+    for (const fd of openFds.splice(0)) {
+      try {
+        closeSync(fd)
+      } catch {
+        // 已关闭
+      }
+    }
+    for (const d of dirs.splice(0)) {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          rmSync(d, { recursive: true, force: true })
+          break
+        } catch (e) {
+          if (attempt >= 5 || (e as NodeJS.ErrnoException)?.code !== 'ENOTEMPTY') throw e
+          await new Promise((r) => setTimeout(r, 50 * (attempt + 1)))
+        }
+      }
+    }
   })
 
   function writeFixture(name: string, content: string): string {
