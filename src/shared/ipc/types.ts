@@ -29,12 +29,17 @@ export type SecureSlot = 'llm_config_red' | 'llm_config_black' | 'llm_config_ass
 
 // ---------- cc:llm:* ----------
 
-/** cc:llm:chat 请求载荷（00 文档 §3.1；url/body/headers 由渲染层 packages/llm 组装） */
+/**
+ * cc:llm:chat 请求载荷（00 文档 §3.1；url/body/headers 由渲染层 packages/llm 组装）。
+ * authSlot（DR-010）：渲染层只见掩码 Key，携带本槽位时由主进程注入真实
+ * Authorization；渲染层持完整 Key（用户刚输入未回读）时直接内联鉴权头、省略本字段。
+ */
 export interface LlmChatRequest {
   requestId: string
   url: string
   headers: Record<string, string>
   body: string
+  authSlot?: SecureSlot
 }
 
 /** SSE 增量（00 文档 §3.1 delta：content?/reasoning?） */

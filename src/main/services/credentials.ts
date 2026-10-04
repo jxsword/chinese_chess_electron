@@ -34,6 +34,16 @@ export class CredentialsService {
 
   /** 读取槽位：apiKey 已掩码；未配置/损坏返回 null（llm_config_store.dart:42-51） */
   get(slot: SecureSlot): LlmEndpointConfig | null {
+    const cfg = this.getRaw(slot)
+    if (cfg === null) return null
+    return { ...cfg, apiKey: maskApiKey(cfg.apiKey) }
+  }
+
+  /**
+   * 读取槽位完整配置（apiKey 不掩码）——仅供主进程内部使用（DR-010：
+   * llm-proxy 注入真实 Authorization），任何路径不得把返回值发给渲染层或写日志。
+   */
+  getRaw(slot: SecureSlot): LlmEndpointConfig | null {
     try {
       const file = this.readFile()
       const payload = file[slot]
@@ -44,7 +54,7 @@ export class CredentialsService {
       if (typeof cfg.baseUrl !== 'string' || typeof cfg.model !== 'string') return null
       return {
         baseUrl: cfg.baseUrl,
-        apiKey: maskApiKey(typeof cfg.apiKey === 'string' ? cfg.apiKey : ''),
+        apiKey: typeof cfg.apiKey === 'string' ? cfg.apiKey : '',
         model: cfg.model,
         disableThinking: cfg.disableThinking === true
       }

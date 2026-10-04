@@ -4,11 +4,14 @@ import { app, BrowserWindow, safeStorage } from 'electron'
 import { CC } from '@shared/ipc/channels'
 import type { AppLifecyclePhase } from '@shared/ipc/types'
 import { registerDbIpc } from './ipc/db'
+import { registerLlmIpc } from './ipc/llm'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { openDao, type ChessDao } from './services/db'
+import { LlmProxy } from './services/llm-proxy'
 import { SettingsService } from './services/settings'
 import { CredentialsService, safeStorageCryptor } from './services/credentials'
+import { LLM_SETTING_KEYS, resolveTimeoutSeconds } from '@packages/llm'
 
 // M2：业务 IPC（cc:db/store/secure/clipboard/app:lifecycle）接入。
 // 生命周期映射（07 §2）：窗口 blur/minimize/close + before-quit → 渲染层自动保存。
@@ -72,14 +75,23 @@ app.whenReady().then(() => {
     return dao
   })
 
-  registerStoreIpc(new SettingsService({ cwd: app.getPath('userData') }))
-  registerSecureIpc(
-    new CredentialsService(
-      safeStorageCryptor(safeStorage),
-      join(app.getPath('userData'), 'credentials.enc')
-    )
+  const settings = new SettingsService({ cwd: app.getPath('userData') })
+  registerStoreIpc(settings)
+  const credentials = new CredentialsService(
+    safeStorageCryptor(safeStorage),
+    join(app.getPath('userData'), 'credentials.enc')
   )
+  registerSecureIpc(credentials)
   registerClipboardIpc()
+  // LLM 代理（DR-004/DR-010）：空闲超时读 llm_settings_timeoutSeconds（主进程侧计时），
+  // authSlot 经凭据服务注入真实 Key。
+  registerLlmIpc(
+    new LlmProxy({
+      getTimeoutSeconds: () =>
+        resolveTimeoutSeconds(settings.get<unknown>(LLM_SETTING_KEYS.timeoutSeconds)),
+      resolveApiKey: (slot) => credentials.getRaw(slot)?.apiKey ?? null
+    })
+  )
 
   createWindow()
 
