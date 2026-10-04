@@ -1,12 +1,18 @@
 # Release 流程（10 文档 M7 / T7.2+T7.3）：
 # 打 tag v* → 三平台 CI 矩阵各自打包（风险 R1：Windows/macOS 产物由 runner 打，
-# WSL 本地只打 Linux）→ 质量门全绿 → electron-builder 发布到 GitHub Draft Release。
+# WSL 本地只打 Linux）→ 质量门全绿 → 每平台二进制统一上传 GitHub Release（draft）。
 # 本地打包命令：npm run dist（Linux）/ dist:win / dist:mac。
+#
+# 缓存策略：npm 下载缓存由 setup-node cache 提供；electron 二进制与 electron-builder
+# 工具链（NSIS/winCodeSign 等，数百 MB）按 OS 分别缓存，key 随 lockfile 失效。
 name: Release
 
 on:
   push:
     tags: ['v*']
+
+permissions:
+  contents: write
 
 jobs:
   dist:
@@ -28,13 +34,32 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      # 大体积构建依赖缓存：electron 二进制（~120MB/平台）+ electron-builder
+      # 工具链（NSIS/winCodeSign/app-builder 等）。随 lockfile 变化失效。
+      - name: Cache electron & electron-builder (Linux/macOS)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+      - name: Cache electron & electron-builder (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      - run: npm run ${{ matrix.script }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # 产物备份：即使发布步骤失败也可从 Actions 下载排查。
+      # --publish never：产物只落盘，由收尾的 release job 统一上传（避免三 job
+      # 并发各自创建 draft 互相竞争）。
+      - run: npm run ${{ matrix.script }} -- --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
@@ -44,3 +69,23 @@ jobs:
             release/**/*.exe
             release/**/*.dmg
           if-no-files-found: error
+
+  release:
+    name: upload to release
+    needs: dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Attach all platform binaries to the tag release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
