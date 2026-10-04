@@ -1,15 +1,25 @@
 /**
  * 语料残局/棋局详情重放视图（06 文档 §4.5 + §7 的查看部分）。
  *
- * M5 范围：局面逐步重放（首/上/下/末、中文记谱芯片跳转）+ 基础播放/暂停；
- * 完整演示播放器（速度档位/循环/状态机）在 M6（T6.5）。
+ * M6 完整演示播放器：播放/暂停/停止状态机（idle→playing→paused→completed）、
+ * 速度档位 0.5x/1x/2x + 自定义间隔滑块 200–4000ms、循环播放；步进与
+ * 中文记谱芯片跳转保留（跳转即停止播放回到手动浏览）。
  * XQF 条目与 PGN 大文件单局解析结果共用本视图。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Board, type Move } from '@packages/rules'
-import { parseIccs } from '@packages/parsers/iccs'
+import { parseIccs } from '@packages/parsers'
 import { difficultyText } from '@packages/parsers'
 import { chineseNotations } from '@packages/storage-schema'
+import {
+  DEMO_FAST,
+  DEMO_INTERVAL_MAX_MS,
+  DEMO_INTERVAL_MIN_MS,
+  DEMO_NORMAL,
+  DEMO_SLOW,
+  PuzzleDemoPlayer,
+  type PuzzleDemoSnapshot
+} from '@renderer/stores/puzzleDemo'
 import { BoardViewStatic } from '@renderer/features/board/BoardViewStatic'
 import type { ParsedPuzzleView } from '@renderer/stores/corpusTypes'
 
@@ -23,8 +33,11 @@ function replayFen(initialFen: string, moves: Move[], n: number): string {
   return board.toFen()
 }
 
-/** 基础播放间隔（06 §7 默认节奏的简化档，完整速度控制在 M6）。 */
-const PLAY_INTERVAL_MS = 900
+const SPEED_OPTIONS: ReadonlyArray<{ multiplier: number; label: string }> = [
+  { multiplier: DEMO_SLOW, label: '0.5x' },
+  { multiplier: DEMO_NORMAL, label: '1x' },
+  { multiplier: DEMO_FAST, label: '2x' }
+]
 
 export function PuzzleDetailView({
   puzzle,
@@ -34,7 +47,8 @@ export function PuzzleDetailView({
   onBack: () => void
 }): React.JSX.Element {
   const [pos, setPos] = useState(0)
-  const [playing, setPlaying] = useState(false)
+  const playerRef = useRef<PuzzleDemoPlayer | null>(null)
+  const [demo, setDemo] = useState<PuzzleDemoSnapshot | null>(null)
 
   const moves = useMemo(
     () =>
@@ -46,31 +60,57 @@ export function PuzzleDetailView({
   )
   const notations = useMemo(() => chineseNotations(puzzle.initialFen, moves), [puzzle, moves])
 
-  const clamped = Math.min(Math.max(pos, 0), moves.length)
-  const lastMove = clamped === 0 ? null : moves[clamped - 1]
-  const fen = useMemo(() => replayFen(puzzle.initialFen, moves, clamped), [puzzle, moves, clamped])
-
-  // 播放：到末尾自动停；手动跳转即暂停。
+  // 演示播放器：每残局一实例，初始化局面并订阅快照。
   useEffect(() => {
-    if (!playing) return
-    const timer = setInterval(() => {
-      setPos((p) => {
-        const next = Math.min(p + 1, moves.length)
-        if (next >= moves.length) setPlaying(false)
-        return next
-      })
-    }, PLAY_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [playing, moves.length])
+    const player = new PuzzleDemoPlayer()
+    playerRef.current = player
+    const unsubscribe = player.subscribe(setDemo)
+    player.initializePuzzle({ initialFen: puzzle.initialFen, moves: puzzle.solutionMoves })
+    setDemo(player.snapshot)
+    return () => {
+      unsubscribe()
+      player.dispose()
+      playerRef.current = null
+    }
+  }, [puzzle])
+
+  // 播放中由播放器驱动显示位置；空闲（手动浏览）用本地 pos。
+  const demoActive = demo !== null && demo.status !== 'idle' && demo.status !== 'error'
+  const clamped = demoActive
+    ? Math.min(demo!.currentMoveIndex + 1, moves.length)
+    : Math.min(Math.max(pos, 0), moves.length)
+  const lastMove =
+    demoActive && demo !== null ? demo.lastMove : clamped === 0 ? null : moves[clamped - 1]
+  const fen =
+    demoActive && demo !== null && demo.fen !== null
+      ? demo.fen
+      : replayFen(puzzle.initialFen, moves, clamped)
+  const status = demo?.status ?? 'idle'
 
   const jump = (n: number): void => {
-    setPlaying(false)
+    playerRef.current?.stopDemo()
     setPos(Math.min(Math.max(n, 0), moves.length))
   }
 
+  const togglePlay = (): void => {
+    const player = playerRef.current
+    if (player === null) return
+    if (status === 'playing') {
+      player.pauseDemo()
+    } else if (status === 'paused') {
+      player.resumeDemo()
+    } else {
+      // idle / completed：从头播放（completed 先重置棋盘）。
+      player.stopDemo()
+      player.startDemo()
+    }
+  }
+
+  const demoInterval = demo?.params.moveInterval ?? 800
+
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
         <button type="button" className="cc-btn" onClick={onBack}>
           返回列表
         </button>
@@ -80,8 +120,8 @@ export function PuzzleDetailView({
           {puzzle.endgame ? '残局题' : '全局对局'}
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-        <div style={{ width: 380, maxWidth: '50%', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ width: 380, maxWidth: '100%', flexShrink: 0 }}>
           <div style={{ height: 420 }}>
             <BoardViewStatic fen={fen} lastMove={lastMove} />
           </div>
@@ -91,23 +131,20 @@ export function PuzzleDetailView({
               gap: 8,
               alignItems: 'center',
               justifyContent: 'center',
-              marginTop: 8
+              marginTop: 8,
+              flexWrap: 'wrap'
             }}
           >
+            <button type="button" className="cc-btn" data-testid="puzzle-play" onClick={togglePlay}>
+              {status === 'playing' ? '暂停' : status === 'paused' ? '继续' : '播放'}
+            </button>
             <button
               type="button"
               className="cc-btn"
-              data-testid="puzzle-play"
-              onClick={() => {
-                if (playing) {
-                  setPlaying(false)
-                  return
-                }
-                if (clamped >= moves.length) setPos(0) // 到末尾：从头播放
-                setPlaying(true)
-              }}
+              data-testid="puzzle-stop"
+              onClick={() => playerRef.current?.stopDemo()}
             >
-              {playing ? '暂停' : '播放'}
+              停止
             </button>
             <button
               type="button"
@@ -118,7 +155,13 @@ export function PuzzleDetailView({
             >
               ⇤
             </button>
-            <button type="button" className="cc-btn" aria-label="上一着" disabled={clamped === 0} onClick={() => jump(clamped - 1)}>
+            <button
+              type="button"
+              className="cc-btn"
+              aria-label="上一着"
+              disabled={clamped === 0}
+              onClick={() => jump(clamped - 1)}
+            >
               ◀
             </button>
             <span data-testid="puzzle-position">
@@ -142,6 +185,61 @@ export function PuzzleDetailView({
             >
               ⇥
             </button>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 8,
+              flexWrap: 'wrap',
+              fontSize: 12
+            }}
+          >
+            <span>速度:</span>
+            {SPEED_OPTIONS.map((o) => {
+              const active = demo?.params.speedMultiplier === o.multiplier
+              return (
+                <button
+                  key={o.label}
+                  type="button"
+                  className="cc-btn"
+                  data-testid={`puzzle-speed-${o.multiplier}`}
+                  style={{ fontWeight: active ? 700 : 400, borderColor: active ? 'var(--cc-seed-dark)' : undefined }}
+                  onClick={() => playerRef.current?.setSpeedMultiplier(o.multiplier)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+            <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              自定义
+              <input
+                type="range"
+                data-testid="puzzle-interval"
+                min={DEMO_INTERVAL_MIN_MS}
+                max={DEMO_INTERVAL_MAX_MS}
+                step={100}
+                value={demoInterval}
+                onChange={(e) => playerRef.current?.setCustomInterval(Number(e.target.value))}
+              />
+              <span data-testid="puzzle-interval-value">{demoInterval}ms/步</span>
+            </label>
+            <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                data-testid="puzzle-loop"
+                checked={demo?.params.loop ?? false}
+                onChange={(e) => playerRef.current?.setDemoLoop(e.target.checked)}
+              />
+              循环
+            </label>
+            {(status === 'completed' || status === 'error') && (
+              <span style={{ color: 'var(--cc-seed-dark)' }} role="status">
+                {status === 'completed' ? '演示完毕' : (demo?.error ?? '演示出错')}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
             {notations.map((text, i) => (
