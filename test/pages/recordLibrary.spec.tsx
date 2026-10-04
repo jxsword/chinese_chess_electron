@@ -191,16 +191,19 @@ describe('棋谱详情（TC-DET）', () => {
     )
   }
 
-  it('TC-DET-001 逐手前进、首末跳转（0/2 → 1/2 → 2/2 → 0/2 → 2/2）', async () => {
+  it('TC-DET-001 对局谱打开即保存时的局面（2/2）；首末跳转与步进', async () => {
     renderDetail(3)
     await screen.findByText('棋谱信息')
+    // 有走法的对局谱：打开直接定位保存时的局面（主变末尾）。
+    expect(screen.getByTestId('replay-position').textContent).toBe('2 / 2 着')
+    fireEvent.click(screen.getByLabelText('上一着'))
+    expect(screen.getByTestId('replay-position').textContent).toBe('1 / 2 着')
+    fireEvent.click(screen.getByLabelText('跳到开局'))
     expect(screen.getByTestId('replay-position').textContent).toBe('0 / 2 着')
     fireEvent.click(screen.getByLabelText('下一着'))
     expect(screen.getByTestId('replay-position').textContent).toBe('1 / 2 着')
     fireEvent.click(screen.getByLabelText('下一着'))
     expect(screen.getByTestId('replay-position').textContent).toBe('2 / 2 着')
-    fireEvent.click(screen.getByLabelText('跳到开局'))
-    expect(screen.getByTestId('replay-position').textContent).toBe('0 / 2 着')
     fireEvent.click(screen.getByLabelText('跳到末尾'))
     expect(screen.getByTestId('replay-position').textContent).toBe('2 / 2 着')
   })

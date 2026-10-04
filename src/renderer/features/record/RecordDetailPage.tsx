@@ -101,6 +101,14 @@ export function RecordDetailPage(): React.JSX.Element {
     }
   }, [record])
 
+  // 对局类棋谱打开时直接定位到保存时的局面（主变末尾），而非开局——
+  // "打开棋谱即所见保存的当前棋局"；步进可往回复盘。解法线路仍从 0 开始。
+  useEffect(() => {
+    if (record !== null && record !== 'loading' && record.moves.length > 0) {
+      setPos(record.moves.length)
+    }
+  }, [record])
+
   if (record === 'loading') {
     return (
       <div className="cc-game-page">
@@ -258,8 +266,10 @@ export function RecordDetailPage(): React.JSX.Element {
                 <select
                   value={line}
                   onChange={(e) => {
-                    setLine(Number(e.target.value))
-                    setPos(0)
+                    const v = Number(e.target.value)
+                    setLine(v)
+                    // 主变定位到保存时的局面（末尾）；解法线路从开局演示。
+                    setPos(v === -1 ? record.moves.length : 0)
                   }}
                 >
                   <option value={-1}>
