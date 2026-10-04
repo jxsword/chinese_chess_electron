@@ -167,3 +167,15 @@
 - 结论: 进程分工取 A、zip 取 A。附带约束: cc:corpus:readFiles 仅放行 .xqf/.pgn/.pgns 扩展名（渲染层路径不可信的最低防线）。
 - 影响: src/main/services/corpus.ts、corpusDownloader.ts、corpusZip.ts、src/renderer/workers/parser.worker.ts/parserProtocol.ts/parserClient.ts、src/renderer/stores/corpusBrowser.ts、features/puzzle/CorpusBrowserPage.tsx、cc:corpus 四通道（00 §3.1 已同步）。
 - 记录时间 / 会话: 2026-10-05（M5 T5.4/5.5 会话）
+
+## DR-017 2026-10-05 Linux（WSLg）文件/目录选择弃用原生对话框，改应用内自绘 [状态: 生效]
+- 背景: M5 手测报告"选择其他棋谱目录时弹窗所有内容不可点击也无法关闭"。逐层实测定位（dbus-monitor / WAYLAND_DEBUG / X 窗口差分 / XTEST 注入）确认 WSLg 下原生对话框两条实现路径全坏：
+  1. Chromium 默认委托 xdg-desktop-portal（org.freedesktop.portal.FileChooser），portal 进程的对话框在其自身 Wayland 连接上渲染，WSLg 输入路由不达——弹窗可见但整体冻结（连合成输入都无法关闭），且用户强杀应用后残留僵尸弹窗；
+  2. GTK_USE_PORTAL=0 回退本进程 GTK 对话框后，不创建任何 surface（无 Wayland toplevel、无 X 窗口），promise 永挂（用户第二次"同样的问题"实为僵尸弹窗 + 新弹窗未出现）。
+- 选项:
+  - A. 应用内自绘选择器（已采纳）：普通 sandboxed BrowserWindow + data:URL 纯 HTML；目录导航/确认/取消全部用 `<a>`/`<form>` 触发 `cc-picker://` 顶级导航，主进程 will-navigate 拦截结算（无渲染层 JS、无新 IPC 面）。优点: 与主窗口同一 Chromium 表面、输入路径恒可用；无原生依赖、三平台行为可预期。缺点: 与系统文件管理器体验不同；约 300 行自维护代码。
+  - B. 修 WSLg 环境侧（重启 portal / wsl --shutdown / 换 GTK 后端 env 组合）: 只治标，用户机器组合千差万别，且 GTK 回退路径连 surface 都不建，无 env 可救。弃（env 兜底保留，见下）。
+  - C. 渲染层 File System Access API（showDirectoryPicker）: 返回 handle 而非路径，语料扫描/下载落盘均以路径为中心（06 §1/§5），架构不匹配。弃。
+- 结论: Linux 上 cc:corpus:pickDirectory、cc:dialog:saveFile、cc:dialog:readFile 三通道全部走自绘选择器（saveFile/readFile 此前无 handler，导出 PGN 文件一并补齐）；Windows/macOS 保持原生 dialog。GTK_USE_PORTAL=0 保留为兜底（防任何残余原生调用再生成僵尸弹窗）。端到端验证: executeJavaScript 驱动 上级目录→选择此目录，结算路径正确；XTEST 无法模拟真实点击（XWayland 不投递合成输入），真实点击路径由"与主窗口同类 Chromium 表面"保证。
+- 影响: src/main/services/dialogPicker.ts、src/main/ipc/dialog.ts（新增）、ipc/corpus.ts、main/index.ts；单测 7 条；手测清单 #2/#12 同步。
+- 记录时间 / 会话: 2026-10-05（M5 手测缺陷修复会话）
