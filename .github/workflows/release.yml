@@ -63,11 +63,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
+          # 只收安装包本体（release/<版本>/ 顶层）；win-unpacked/ 内的裸 exe
+          # 与 elevate.exe 是 NSIS 解包副产物，不作为发布物。
           path: |
             release/**/*.AppImage
             release/**/*.deb
-            release/**/*.exe
-            release/**/*.dmg
+            release/*/*.exe
+            release/*/*.dmg
           if-no-files-found: error
 
   release:
@@ -87,5 +89,5 @@ jobs:
           files: |
             artifacts/**/*.AppImage
             artifacts/**/*.deb
-            artifacts/**/*.exe
-            artifacts/**/*.dmg
+            artifacts/*/*.exe
+            artifacts/*/*.dmg
