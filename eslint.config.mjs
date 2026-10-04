@@ -31,6 +31,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } }
   },
   {
+    // E2E：Node 运行器 + 页面内 eval（waitForFunction 回调在浏览器上下文执行）。
+    files: ['e2e/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } }
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn'
