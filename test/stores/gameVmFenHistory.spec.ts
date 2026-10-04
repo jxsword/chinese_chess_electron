@@ -82,4 +82,16 @@ describe('GameVm fenHistory（DR-018）', () => {
     store.getState().vm.newGameFromFen(fen)
     expect(store.getState().fenHistory).toEqual([fen])
   })
+
+  it('agreeDraw 写入 result=draw 并终局（DR-018）；终局后 playMove 拒绝', () => {
+    const store = createGameStore({ mode: 'humanVsHuman' })
+    playCannonMid(store)
+    store.getState().vm.agreeDraw()
+    const state = store.getState()
+    expect(state.result).toBe('draw')
+    expect(store.getState().vm.isFinished).toBe(true)
+    // 终局后走子被拒（不改状态）。
+    expect(store.getState().vm.playMove(pos(1, 7), pos(4, 7))).toBe(false)
+    expect(store.getState().result).toBe('draw')
+  })
 })

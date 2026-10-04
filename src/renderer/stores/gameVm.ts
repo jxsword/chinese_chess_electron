@@ -295,6 +295,17 @@ export class GameVm {
     })
   }
 
+  /** 判和（重复局面判和 / 双方长将不变作和，DR-018）：显式终局。 */
+  agreeDraw(): void {
+    this.inputLocked = false
+    this.commit({
+      ...this.buildSnapshot(),
+      result: 'draw',
+      selected: null,
+      legalTargets: []
+    })
+  }
+
   /** 序列化为可保存数据（board_vm.dart:308-310；moves 为裸四元组） */
   serialize(): { fen: string; moves: number[][] } {
     return { fen: this.current.fen, moves: encodeMoveStack(this.history) }
