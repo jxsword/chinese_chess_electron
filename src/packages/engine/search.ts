@@ -44,7 +44,19 @@ export interface SearchConfig {
   randomness: number
   /** 取消探针：与 deadline 同节奏（每 64 节点）轮询，返回 true 即中止。 */
   shouldAbort?: () => boolean
+  /**
+   * 全局对局历史出现次数表（DR-018，键 `${lo},${hi}`，final 设计 §3）。
+   * 缺省 = 完全关闭重复检测，行为与 Dart 口径逐位一致（向后兼容铁律）。
+   */
+  historyCounts?: Map<string, number>
 }
+
+/** 路径重复阶梯惩罚（厘兵，final §3）：occ=2 → +50 / occ=3 → +150 / occ≥4 → 和棋分 0。 */
+const PATH_REPEAT_PENALTY = [50, 150]
+/** 全局历史命中（count≥2）的单次惩罚基数（厘兵）。 */
+const GLOBAL_REPEAT_PENALTY = 100
+/** 全局历史检查只在浅层启用（final §3：深层仅查路径内重复，防棋力劣化）。 */
+const GLOBAL_CHECK_MAX_PLY = 3
 
 export class Search {
   private readonly board: EngineBoard
@@ -61,6 +73,10 @@ export class Search {
   /** 中断原因：超时/取消后置位（对齐 Dart `_TimeUp` 捕获语义，不向上抛）。 */
   interrupted: 'timeout' | 'canceled' | null = null
   private readonly moveBufs = new Int32Array(MAX_PLY * MOVE_STRIDE)
+  private readonly historyCounts: Map<string, number> | undefined
+  /** 搜索路径局面键栈（按 ply 下标覆盖写，negamax 入口赋值即等效 push）。 */
+  private readonly pathLo = new Int32Array(MAX_PLY)
+  private readonly pathHi = new Int32Array(MAX_PLY)
 
   constructor(board: EngineBoard, config: SearchConfig) {
     this.board = board
@@ -68,6 +84,7 @@ export class Search {
     this.deadlineMs = config.deadlineMs
     this.randomness = config.randomness
     this.shouldAbort = config.shouldAbort
+    this.historyCounts = config.historyCounts
   }
 
   /**
@@ -119,6 +136,10 @@ export class Search {
 
     // 根节点排序：上层最佳走法放最前（浅层结果指导深层剪枝）。
     if (this.best === null) this.best = rootMoves[0]
+
+    // 根局面压入路径栈 ply=0（L1 路径重复基准，DR-018）。
+    this.pathLo[0] = b.zobristLo
+    this.pathHi[0] = b.zobristHi
 
     for (let depth = 1; depth <= this.maxDepth; depth++) {
       let alpha = -INFINITY
@@ -209,6 +230,37 @@ export class Search {
     const b = this.board
     const buf = this.moveBufs
     const base = ply * MOVE_STRIDE
+
+    // L1 重复检测（DR-018，final §3）：historyCounts 缺省时整体关闭，保持旧口径。
+    // 路径栈按 ply 覆盖写 = push；qsearch 不参与（吃子线不可能成环）。
+    if (this.historyCounts !== undefined) {
+      const lo = b.zobristLo
+      const hi = b.zobristHi
+      this.pathLo[ply] = lo
+      this.pathHi[ply] = hi
+      const pathLo = this.pathLo
+      const pathHi = this.pathHi
+      let earlier = 0 // 路径 0..ply-1 中同键出现次数（occ = earlier + 1）
+      for (let i = ply - 1; i >= 0; i--) {
+        if (pathLo[i] === lo && pathHi[i] === hi) {
+          earlier++
+          if (earlier >= 3) break
+        }
+      }
+      if (earlier > 0) {
+        // 造成重复的一方（父节点走子方）受罚：节点分（走子方视角）加惩罚。
+        if (earlier >= 3) return 0 // 第 3 次及以上：和棋分
+        return b.evaluate() + PATH_REPEAT_PENALTY[earlier - 1]!
+      }
+      if (ply <= GLOBAL_CHECK_MAX_PLY) {
+        const count = this.historyCounts.get(`${lo},${hi}`)
+        // count≥2 = 真实重复威胁（第 3 次将现）；count=1 不罚，避免误伤正常巡回。
+        if (count !== undefined && count >= 2) {
+          return b.evaluate() + GLOBAL_REPEAT_PENALTY * (count - 1)
+        }
+      }
+    }
+
     const n = b.generateMoves(buf, base, false)
     // MVV-LVA：等级在 packed 高位，段内升序排后倒序遍历即等级降序（吃大子优先）。
     buf.subarray(base, base + n).sort()
