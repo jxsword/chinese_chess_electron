@@ -3,13 +3,14 @@
  * 内存路由（桌面应用，无全局路由表）+ 主导航页 + 生命周期事件桥接。
  */
 import { useEffect } from 'react'
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { HomePage } from './HomePage'
 import { HumanVsHumanPage } from '@renderer/features/board/HumanVsHumanPage'
 import { HumanVsAiPage } from '@renderer/features/board/HumanVsAiPage'
 import { HumanVsLlmPage } from '@renderer/features/board/HumanVsLlmPage'
 import { LlmVsLlmPage } from '@renderer/features/board/LlmVsLlmPage'
 import { CorpusBrowserPage } from '@renderer/features/puzzle/CorpusBrowserPage'
+import { EndgameStudioPage } from '@renderer/features/studio/EndgameStudioPage'
 import { RecordLibraryPage } from '@renderer/features/record/RecordLibraryPage'
 import { RecordDetailPage } from '@renderer/features/record/RecordDetailPage'
 import { api } from '@renderer/ipc/client'
@@ -19,25 +20,6 @@ import { notifyLifecycle } from '@renderer/stores/lifecycleRegistry'
 function LifecycleBridge(): null {
   useEffect(() => api.app.onLifecycle((e) => notifyLifecycle(e.phase)), [])
   return null
-}
-
-/** 未交付里程碑的入口占位 */
-function PlaceholderPage({ title, milestone }: { title: string; milestone: string }): React.JSX.Element {
-  const navigate = useNavigate()
-  return (
-    <div className="cc-game-page">
-      <header className="cc-game-header">
-        <h2>{title}</h2>
-      </header>
-      <div className="cc-placeholder">
-        <div style={{ fontSize: 18 }}>{title}</div>
-        <div>本入口将在 {milestone} 里程碑交付</div>
-        <button type="button" className="cc-btn" onClick={() => navigate('/')}>
-          返回主页
-        </button>
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -63,7 +45,7 @@ export default function App(): React.JSX.Element {
         <Route path="/human-vs-ai" element={<HumanVsAiPage />} />
         <Route path="/human-vs-llm" element={<HumanVsLlmPage />} />
         <Route path="/llm-vs-llm" element={<LlmVsLlmPage />} />
-        <Route path="/endgame-studio" element={<PlaceholderPage title="残局工作室" milestone="M6" />} />
+        <Route path="/endgame-studio" element={<EndgameStudioPage />} />
         <Route path="/record-library" element={<RecordLibraryPage />} />
         <Route path="/record-library/:id" element={<RecordDetailPage />} />
       </Routes>
