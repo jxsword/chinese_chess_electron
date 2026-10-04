@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "lint": "npm run typecheck && eslint .",
     "test": "node tools/run-vitest.mjs run",
+    "eval": "node tools/eval.mjs",
     "postinstall": "electron-rebuild -w better-sqlite3 || echo 'WARN: better-sqlite3 未能重建为 Electron ABI，npm run dev 前请执行 npx electron-rebuild -w better-sqlite3'"
   },
   "dependencies": {

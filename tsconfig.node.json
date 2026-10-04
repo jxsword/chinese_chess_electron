@@ -11,6 +11,7 @@
     "src/main/**/*.ts",
     "src/shared/**/*.ts",
     "src/packages/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "tools/*.ts"
   ]
 }
