@@ -31,10 +31,17 @@ export class ChessAiPlayer implements MoveSource {
     return `内置 AI（${difficultyName(this.difficulty)}）`
   }
 
-  async nextMove(board: Board, _history?: readonly Move[]): Promise<MoveSourceResult> {
+  async nextMove(
+    board: Board,
+    _history?: readonly Move[],
+    historyFens?: readonly string[]
+  ): Promise<MoveSourceResult> {
     let move: Move | null
     try {
-      move = await this.client.findBestMove(board.toFen(), { difficulty: this.difficulty })
+      move = await this.client.findBestMove(board.toFen(), {
+        difficulty: this.difficulty,
+        historyFens
+      })
     } catch (e) {
       if (e instanceof Error && e.message === CANCELED_ERROR) throw e
       const note = e instanceof Error ? e.message : String(e)

@@ -24,6 +24,8 @@ export interface GameSnapshot {
   fen: string
   /** 走法历史（含棋子/吃子信息，供悔棋与记谱） */
   moveHistory: readonly Move[]
+  /** 逐手局面 FEN 序列（初始局面→当前，含轮走方；DR-018 供 L2/L3 使用） */
+  fenHistory: readonly string[]
   isRedTurn: boolean
   isCheck: boolean
   /** 对局结果，null 表示进行中 */
@@ -57,6 +59,8 @@ function safeBoardFromFen(fen: string | undefined): Board {
 export class GameVm {
   private _board: Board
   private history: Move[] = []
+  /** 逐手局面 FEN（含初始局面，与 history 一一对应+1；executeMove push / undo pop / restore 重放重建） */
+  private _fenHistory: string[] = []
   /** 输入锁：AI/LLM 思考期间禁止点击棋盘（board_vm.dart:21） */
   private inputLocked = false
   private readonly listeners = new Set<Unsubscribe>()
@@ -64,6 +68,7 @@ export class GameVm {
 
   constructor(config: GameVmConfig = {}) {
     this._board = safeBoardFromFen(config.initialFen)
+    this._fenHistory = [this._board.toFen()]
     this.snap = this.buildSnapshot()
   }
 
@@ -114,6 +119,7 @@ export class GameVm {
     return {
       fen: this._board.toFen(),
       moveHistory: [...this.history],
+      fenHistory: [...this._fenHistory],
       isRedTurn: this._board.isRedTurn,
       isCheck,
       result,
@@ -137,6 +143,7 @@ export class GameVm {
       this._board = Board.initial()
     }
     this.history = []
+    this._fenHistory = [this._board.toFen()]
     for (const m of moves) {
       if (m.length !== 4 || !m.every((n) => Number.isInteger(n))) continue // 跳过不完整的数据
       const from = { col: m[0]!, row: m[1]! }
@@ -146,6 +153,7 @@ export class GameVm {
       if (piece === null) continue // 源格无棋子（数据不一致），跳过
       const applied = this._board.applyMove({ from, to })
       this.history.push({ from: applied.from, to: applied.to, piece, captured: applied.captured })
+      this._fenHistory.push(this._board.toFen())
     }
     const lastMove = this.history.length > 0 ? (this.history[this.history.length - 1] ?? null) : null
     this.commit(this.buildSnapshot(null, [], lastMove))
@@ -192,6 +200,7 @@ export class GameVm {
     const piece = this._board.pieceAtP(from)!
     const applied = this._board.applyMove({ from, to })
     this.history.push({ from: applied.from, to: applied.to, piece, captured: applied.captured })
+    this._fenHistory.push(this._board.toFen())
     this.commit({
       ...this.buildSnapshot(),
       selected: null,
@@ -252,6 +261,7 @@ export class GameVm {
     const last = this.history.pop()
     if (last === undefined) return
     this._board.undoMove(last)
+    this._fenHistory.pop()
     const lastMove = this.history.length > 0 ? (this.history[this.history.length - 1] ?? null) : null
     this.commit({ ...this.buildSnapshot(), selected: null, legalTargets: [], lastMove })
   }
@@ -261,6 +271,7 @@ export class GameVm {
     this.inputLocked = false
     this._board = Board.initial()
     this.history = []
+    this._fenHistory = [this._board.toFen()]
     this.commit(this.buildSnapshot())
   }
 
@@ -269,6 +280,7 @@ export class GameVm {
     this.inputLocked = false
     this._board = safeBoardFromFen(fen)
     this.history = []
+    this._fenHistory = [this._board.toFen()]
     this.commit(this.buildSnapshot())
   }
 

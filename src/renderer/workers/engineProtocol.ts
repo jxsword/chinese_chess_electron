@@ -30,6 +30,8 @@ export interface EngineResponseMsg {
 export interface FindBestMovePayload {
   fen: string
   difficulty?: number
+  /** 对局历史局面 FEN 序列（DR-018 L2 根节点回避）；缺省 = 旧行为。 */
+  historyFens?: string[]
 }
 
 export interface FindBestMoveExPayload {
@@ -85,7 +87,11 @@ function dispatch(msg: EngineRequestMsg, shouldAbort: () => boolean): unknown {
   switch (msg.type) {
     case 'findBestMove': {
       const p = (msg.payload ?? {}) as FindBestMovePayload
-      return findBestMove(p.fen, { difficulty: p.difficulty, shouldAbort })
+      return findBestMove(p.fen, {
+        difficulty: p.difficulty,
+        shouldAbort,
+        historyFens: p.historyFens
+      })
     }
     case 'findBestMoveEx': {
       const p = (msg.payload ?? {}) as FindBestMoveExPayload

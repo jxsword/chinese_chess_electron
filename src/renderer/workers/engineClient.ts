@@ -80,8 +80,15 @@ export class EngineClient {
   }
 
   /** 对局 AI 应手（Move 为纯数据，页面 playMove 仍做最终校验）。 */
-  async findBestMove(fen: string, options: { difficulty?: number } = {}): Promise<Move | null> {
-    const payload: FindBestMovePayload = { fen, difficulty: options.difficulty }
+  async findBestMove(
+    fen: string,
+    options: { difficulty?: number; historyFens?: readonly string[] } = {}
+  ): Promise<Move | null> {
+    const payload: FindBestMovePayload = {
+      fen,
+      difficulty: options.difficulty,
+      historyFens: options.historyFens === undefined ? undefined : [...options.historyFens]
+    }
     return (await this.request('findBestMove', payload)) as Move | null
   }
 

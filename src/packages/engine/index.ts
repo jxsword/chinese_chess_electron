@@ -25,6 +25,8 @@ export {
   findBestMove,
   findBestMoveEx,
   evaluateMove,
+  pickAvoidanceMove,
+  type AvoidanceContext,
   type EngineReport,
   type EngineInput
 } from './chessAi'
