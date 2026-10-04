@@ -26,3 +26,7 @@ export const APP_COLORS = {
 
 /** 字体栈（08 文档 §1） */
 export const FONT_STACK = "'Microsoft YaHei', 'PingFang SC', serif" as const
+
+/** 语料包下载地址（corpus_paths.dart:34-35，GitHub Release 附件，永远指向最新一版） */
+export const CORPUS_DOWNLOAD_URL =
+  'https://github.com/jxsword/qp-corpus/releases/latest/download/qp-corpus.zip'

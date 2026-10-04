@@ -9,6 +9,7 @@ import { HumanVsHumanPage } from '@renderer/features/board/HumanVsHumanPage'
 import { HumanVsAiPage } from '@renderer/features/board/HumanVsAiPage'
 import { HumanVsLlmPage } from '@renderer/features/board/HumanVsLlmPage'
 import { LlmVsLlmPage } from '@renderer/features/board/LlmVsLlmPage'
+import { CorpusBrowserPage } from '@renderer/features/puzzle/CorpusBrowserPage'
 import { api } from '@renderer/ipc/client'
 import { notifyLifecycle } from '@renderer/stores/lifecycleRegistry'
 
@@ -56,7 +57,7 @@ export default function App(): React.JSX.Element {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/human-vs-human" element={<HumanVsHumanPage />} />
-        <Route path="/puzzle" element={<PlaceholderPage title="残局选关" milestone="M5/M6" />} />
+        <Route path="/puzzle" element={<CorpusBrowserPage />} />
         <Route path="/human-vs-ai" element={<HumanVsAiPage />} />
         <Route path="/human-vs-llm" element={<HumanVsLlmPage />} />
         <Route path="/llm-vs-llm" element={<LlmVsLlmPage />} />

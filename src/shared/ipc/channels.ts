@@ -33,6 +33,10 @@ export const CC = {
     download: 'cc:corpus:download',
     progress: 'cc:corpus:progress',
     scan: 'cc:corpus:scan',
+    listEntries: 'cc:corpus:listEntries',
+    readFiles: 'cc:corpus:readFiles',
+    pgnIndex: 'cc:corpus:pgnIndex',
+    readPgnGame: 'cc:corpus:readPgnGame',
     pickDirectory: 'cc:corpus:pickDirectory'
   },
   dialog: {

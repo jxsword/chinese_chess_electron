@@ -17,6 +17,7 @@ import type {
   LlmChatRequest,
   VisionReadBoardRequest,
   CorpusDownloadRequest,
+  PgnIndexEntry,
   SaveFileRequest,
   SecureSetResult
 } from '@shared/ipc/types'
@@ -69,6 +70,13 @@ const api: WindowApi = {
     onProgress: (listener: (e: CorpusProgressEvent) => void) =>
       subscribe<CorpusProgressEvent>(CC.corpus.progress, listener),
     scan: (root: string) => ipcRenderer.invoke(CC.corpus.scan, { root }),
+    listEntries: (categoryPath: string, categoryName: string) =>
+      ipcRenderer.invoke(CC.corpus.listEntries, { categoryPath, categoryName }),
+    readFiles: (paths: string[]) => ipcRenderer.invoke(CC.corpus.readFiles, { paths }),
+    pgnIndex: (path: string, maxGames?: number) =>
+      ipcRenderer.invoke(CC.corpus.pgnIndex, { path, maxGames }),
+    readPgnGame: (path: string, entry: PgnIndexEntry) =>
+      ipcRenderer.invoke(CC.corpus.readPgnGame, { path, entry }),
     pickDirectory: () => ipcRenderer.invoke(CC.corpus.pickDirectory)
   },
   dialog: {

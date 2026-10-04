@@ -41,6 +41,10 @@ describe('IPC 通道契约（00 §3.1）', () => {
     expect(CC.corpus.download).toBe('cc:corpus:download')
     expect(CC.corpus.progress).toBe('cc:corpus:progress')
     expect(CC.corpus.scan).toBe('cc:corpus:scan')
+    expect(CC.corpus.listEntries).toBe('cc:corpus:listEntries')
+    expect(CC.corpus.readFiles).toBe('cc:corpus:readFiles')
+    expect(CC.corpus.pgnIndex).toBe('cc:corpus:pgnIndex')
+    expect(CC.corpus.readPgnGame).toBe('cc:corpus:readPgnGame')
     expect(CC.corpus.pickDirectory).toBe('cc:corpus:pickDirectory')
     expect(CC.dialog.saveFile).toBe('cc:dialog:saveFile')
     expect(CC.dialog.readFile).toBe('cc:dialog:readFile')
@@ -198,15 +202,20 @@ describe('mock api 行为', () => {
     expect(await api.secure.get('llm_config_red')).toBeNull()
   })
 
-  it('corpus：download 发进度事件后完成；scan 返回分类列表；pickDirectory 可为 null', async () => {
+  it('corpus：download 发进度事件后完成；scan 返回扫描结果；pickDirectory 可为 null', async () => {
     const api = createMockApi()
     const progress: Array<{ received: number; total: number }> = []
     api.corpus.onProgress((e) => progress.push({ received: e.received, total: e.total }))
     await api.corpus.download({ requestId: 'r3', url: 'https://mock.local/corpus.zip', targetDir: '/tmp/mock' })
     expect(progress.length).toBeGreaterThan(0)
     expect(progress[progress.length - 1]?.received).toBe(progress[progress.length - 1]?.total)
-    const cats = await api.corpus.scan('/tmp/mock')
-    expect(Array.isArray(cats)).toBe(true)
+    const scan = await api.corpus.scan('/tmp/mock')
+    expect(scan.exists).toBe(false)
+    expect(Array.isArray(scan.categories)).toBe(true)
+    expect(await api.corpus.listEntries('/tmp/mock', '测试')).toEqual([])
+    expect(await api.corpus.readFiles(['/tmp/a.xqf'])).toEqual([])
+    expect(await api.corpus.pgnIndex('/tmp/x.pgns')).toEqual([])
+    expect(await api.corpus.readPgnGame('/tmp/x.pgns', { offset: 0, length: 1, event: null, red: null, black: null })).toBe('')
     expect(await api.corpus.pickDirectory()).toBeNull()
   })
 

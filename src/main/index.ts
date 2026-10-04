@@ -4,6 +4,7 @@ import { app, BrowserWindow, safeStorage } from 'electron'
 import { CC } from '@shared/ipc/channels'
 import type { AppLifecyclePhase } from '@shared/ipc/types'
 import { registerDbIpc } from './ipc/db'
+import { registerCorpusIpc } from './ipc/corpus'
 import { registerLlmIpc } from './ipc/llm'
 import { registerStoreIpc, registerSecureIpc } from './ipc/store'
 import { registerClipboardIpc } from './ipc/clipboard'
@@ -83,6 +84,13 @@ app.whenReady().then(() => {
   )
   registerSecureIpc(credentials)
   registerClipboardIpc()
+  // 语料库（M5，06 文档）：扫描/读取 + 下载（SSRF/zip-slip 防护在主进程）。
+  registerCorpusIpc({
+    settings,
+    documentsPath: app.getPath('documents'),
+    legacyBasePath: process.cwd(),
+    webContentsProvider: () => BrowserWindow.getAllWindows()[0]?.webContents ?? null
+  })
   // LLM 代理（DR-004/DR-010）：空闲超时读 llm_settings_timeoutSeconds（主进程侧计时），
   // authSlot 经凭据服务注入真实 Key。
   registerLlmIpc(

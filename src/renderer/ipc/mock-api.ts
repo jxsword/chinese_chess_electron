@@ -207,7 +207,24 @@ export function createMockApi(): WindowApi {
       },
       scan: async () => {
         await delay(IO_DELAY_MS)
+        // mock：目录存在但为空 → 语料库页展示下载引导（引导流程在真实 IPC 上手测）
+        return { root: '/mock-corpus', exists: false, categories: [] }
+      },
+      listEntries: async () => {
+        await delay(IO_DELAY_MS)
         return []
+      },
+      readFiles: async () => {
+        await delay(IO_DELAY_MS)
+        return []
+      },
+      pgnIndex: async () => {
+        await delay(IO_DELAY_MS)
+        return []
+      },
+      readPgnGame: async () => {
+        await delay(IO_DELAY_MS)
+        return ''
       },
       pickDirectory: async () => {
         await delay(IO_DELAY_MS)

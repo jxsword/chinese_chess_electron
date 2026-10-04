@@ -19,7 +19,10 @@ import type {
   GameRecordSummary,
   CorpusDownloadRequest,
   CorpusProgressEvent,
-  CorpusCategory,
+  CorpusScanResult,
+  CorpusEntry,
+  CorpusFileBytes,
+  PgnIndexEntry,
   SaveFileRequest,
   FileContent,
   AppLifecycleEvent,
@@ -72,7 +75,17 @@ export interface WindowApi {
     /** 语料下载（进度经 onProgress 事件；SSRF/zip-slip 防护在主进程，06 文档 §5） */
     download(req: CorpusDownloadRequest): Promise<void>
     onProgress(listener: (e: CorpusProgressEvent) => void): Unsubscribe
-    scan(root: string): Promise<CorpusCategory[]>
+    /** 扫描语料分类（root 为空串时主进程按 用户设置>legacy>默认 解析，06 文档 §1） */
+    scan(root: string): Promise<CorpusScanResult>
+    /** 列出 XQF 分类下的全部 .xqf 文件（不解析） */
+    listEntries(categoryPath: string, categoryName: string): Promise<CorpusEntry[]>
+    /** 批量读取 .xqf 文件字节（转交 parser.worker 解析） */
+    readFiles(paths: string[]): Promise<CorpusFileBytes[]>
+    /** 大 PGN 文件按局偏移索引（流式扫描，06 文档 §4.4） */
+    pgnIndex(path: string, maxGames?: number): Promise<PgnIndexEntry[]>
+    /** 读取大 PGN 文件中索引指向的单局文本 */
+    readPgnGame(path: string, entry: PgnIndexEntry): Promise<string>
+    /** 桌面端"选择其他棋谱目录" */
     pickDirectory(): Promise<string | null>
   }
   dialog: {

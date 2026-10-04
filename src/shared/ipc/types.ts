@@ -144,7 +144,7 @@ export interface GameRecordSummary {
 
 // ---------- cc:corpus:* ----------
 
-/** cc:corpus:download 载荷（00 文档 §3.1；安全设计见 06 文档 §5，M5 落地） */
+/** cc:corpus:download 载荷（00 文档 §3.1；targetDir 为空时由主进程解析默认语料目录） */
 export interface CorpusDownloadRequest {
   requestId: string
   url: string
@@ -157,10 +157,48 @@ export interface CorpusProgressEvent {
   total: number
 }
 
+/** 语料条目种类（corpus_scanner.dart CorpusKind，06 文档 §1） */
+export type CorpusKind = 'xqfDirectory' | 'pgnFile'
+
 /** 语料分类：目录即分类 / 多局合一 .pgns 每文件一分类（06 文档 §1/§4） */
 export interface CorpusCategory {
   name: string
   path: string
+  kind: CorpusKind
+  /** 来源标注（相对语料根的前两级路径，作为 ParsedPuzzle.source） */
+  source: string
+}
+
+/** cc:corpus:scan 响应（root 为空时主进程按 用户设置>legacy>默认 解析） */
+export interface CorpusScanResult {
+  /** 解析后的语料目录绝对路径（缺失引导展示用） */
+  root: string
+  exists: boolean
+  categories: CorpusCategory[]
+}
+
+/** XQF 分类下的文件条目（解析前的轻量描述，corpus_scanner.dart CorpusEntry） */
+export interface CorpusEntry {
+  path: string
+  category: string
+  /** 相对分类目录的前两级子目录（如"残局/适情雅趣"） */
+  source: string
+  displayName: string
+}
+
+/** cc:corpus:readFiles 条目（bytes 结构化克隆到渲染层再转交 worker） */
+export interface CorpusFileBytes {
+  path: string
+  bytes: Uint8Array
+}
+
+/** cc:corpus:pgnIndex 条目（大 PGN 文件单局偏移索引，06 文档 §4.4） */
+export interface PgnIndexEntry {
+  offset: number
+  length: number
+  event: string | null
+  red: string | null
+  black: string | null
 }
 
 // ---------- cc:dialog:* ----------
