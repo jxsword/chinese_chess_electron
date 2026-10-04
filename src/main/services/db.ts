@@ -148,7 +148,9 @@ function recordFromRow(row: GameRecordsRow): GameRecord {
         .filter((m): m is Move => m !== null)
         .map((m) => {
           const r = encodeRecordMove(m)
-          return { f: r.f, t: r.t, p: r.p ?? '', x: r.x ?? '' }
+          // 契约面 x 允许 null；此处不可把 null 强转 ''——decodeRecordMove 会把
+          // 空串视为非法 FEN 字符而丢弃整条走法（实机缺陷：棋谱变新局）。
+          return { f: r.f, t: r.t, p: r.p ?? '', x: r.x }
         })
     }
   } catch {

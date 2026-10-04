@@ -59,8 +59,10 @@ export function decodeRecordMove(raw: unknown): Move | null {
   if (typeof tc !== 'number' || typeof tr !== 'number') return null
   if (!inBoard(fc, fr) || !inBoard(tc, tr)) return null
   const piece = pieceFromFenOrNull(r.p)
-  if (r.p !== null && r.p !== undefined && piece === undefined) return null
+  // 空串与 null/undefined 同义（旧库行存在 x:"" 形态），均视为"无棋子"；
+  // 其余非空串无法解析为 FEN 字符才算脏数据。
+  if (r.p !== null && r.p !== undefined && r.p !== '' && piece === undefined) return null
   const captured = pieceFromFenOrNull(r.x)
-  if (r.x !== null && r.x !== undefined && captured === undefined) return null
+  if (r.x !== null && r.x !== undefined && r.x !== '' && captured === undefined) return null
   return { from: pos(fc, fr), to: pos(tc, tr), piece, captured }
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { ChessDao, initSchema } from '@main/services/db'
+import { decodeRecordMove, encodeRecordMove, finalFenOf, fillMovePieces } from '@packages/storage-schema'
+import { pos, FEN_INITIAL, type Move } from '@packages/rules'
 
 // 等价集：test/features/storage/game_dao_test.dart(10) + game_record_dao_test.dart(6)
 // 内存库运行（09 文档 §2.4 db 节）；时间戳为 epoch 毫秒（07 §1 定稿）。
@@ -232,6 +234,60 @@ describe('game_records（game_record_dao_test.dart）', () => {
 
     dao.deleteForMode('humanVsHuman')
     expect(dao.recordById(id)).not.toBeNull()
+  })
+
+  it('回归：无吃子走法（x=null）入库读回后可解码，起点重算非新局（实机缺陷修复）', () => {
+    dao = freshDao()
+    // 缺陷链：recordFromRow 曾把 x:null 强转为 x:""，decodeRecordMove 将空串视为
+    // 非法 FEN 字符 → 全部走法解码失败 → 详情重放 0/0、进入对战回初始局面。
+    const moves: Move[] = fillMovePieces(FEN_INITIAL, [
+      { from: pos(7, 7), to: pos(4, 7) },
+      { from: pos(7, 0), to: pos(6, 2) },
+      { from: pos(8, 0), to: pos(7, 0) }
+    ])
+    const finalFen = finalFenOf(FEN_INITIAL, moves)
+    const id = dao.insertRecord({
+      title: '回归',
+      mode: 'humanVsAi',
+      initialFen: FEN_INITIAL,
+      moves: moves.map((m) => {
+        const raw = encodeRecordMove(m)
+        return { f: raw.f, t: raw.t, p: raw.p ?? '', x: raw.x }
+      }),
+      result: null,
+      solveStatus: 'none',
+      solutions: null,
+      llmNote: null,
+      note: null,
+      createdAt: Date.now()
+    })
+    const loaded = dao.recordById(id)!
+    expect(loaded.moves).toHaveLength(3)
+    // 每条走法都能解码（旧缺陷：x:"" 导致全部 null）。
+    for (const m of loaded.moves) {
+      expect(decodeRecordMove(m)).not.toBeNull()
+    }
+    // 进入对战起点 = 终局局面（≠ 标准开局）。
+    const decoded = loaded.moves
+      .map(decodeRecordMove)
+      .filter((m): m is Move => m !== null)
+    const startFen = finalFenOf(FEN_INITIAL, decoded)
+    expect(startFen.split(' ')[0]).not.toBe(FEN_INITIAL.split(' ')[0])
+    expect(startFen).toBe(finalFen)
+  })
+
+  it('回归：旧库 x:"" 形态的走法行可解码（存量数据修复）', () => {
+    // 已落库的历史行：recordFromRow 旧映射把 null 强转成 ""。
+    const legacyMoves = [
+      { f: [7, 7], t: [4, 7], p: 'C', x: '' },
+      { f: [7, 0], t: [6, 2], p: 'n', x: null }
+    ]
+    for (const m of legacyMoves) {
+      expect(decodeRecordMove(m)).not.toBeNull()
+    }
+    // 真正的脏数据（非法 FEN 字符）仍然拒绝。
+    expect(decodeRecordMove({ f: [7, 7], t: [4, 7], p: 'C', x: 'Z' })).toBeNull()
+    expect(decodeRecordMove({ f: [7, 7], t: [4, 7], p: 'ZZ', x: null })).toBeNull()
   })
 
   it('旧库（无 game_records 表）打开时自动建表', () => {
