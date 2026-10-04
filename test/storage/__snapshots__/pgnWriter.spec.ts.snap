@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`PGN 导出快照（协议面） > 多解残局导出全文 1`] = `
+"[Event "中国象棋 Ultra"]
+[Site "ChineseChessUltra"]
+[Date "2026.10.02"]
+[Round "-"]
+[Red "红方"]
+[Black "黑方"]
+[Result "1-0"]
+[Annotator "已破解"]
+[SetFen "3k5/9/9/9/9/9/9/9/9/4K4 w - - 0 1"]
+[FEN "3k5/9/9/9/9/9/9/9/9/4K4 w - - 0 1"]
+
+
+"
+`;
+
+exports[`PGN 导出快照（协议面） > 标准对局导出全文 1`] = `
+"[Event "中国象棋 Ultra"]
+[Site "ChineseChessUltra"]
+[Date "2026.10.02"]
+[Round "-"]
+[Red "玩家甲"]
+[Black "玩家乙"]
+[Result "*"]
+
+1. h2e2 h9g7 *
+"
+`;

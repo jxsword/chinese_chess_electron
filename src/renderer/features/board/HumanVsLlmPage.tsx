@@ -28,6 +28,7 @@ import { LlmConfigCard } from '@renderer/features/settings/LlmConfigCard'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
 import { api } from '@renderer/ipc/client'
+import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 
 const BLACK_SLOT = 'llm_config_black'
 
@@ -85,6 +86,7 @@ export function HumanVsLlmPage(): React.JSX.Element {
   const [llmNote, setLlmNote] = useState('')
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [savingRecord, setSavingRecord] = useState(false)
 
   // 每局一实例（铁律 #6）
   const store = useMemo(
@@ -443,6 +445,9 @@ export function HumanVsLlmPage(): React.JSX.Element {
             保存棋局
           </button>
         )}
+        <button type="button" className="cc-btn" onClick={() => setSavingRecord(true)}>
+          保存为棋谱
+        </button>
       </header>
       <div className={`cc-status-bar ${statusClass}`} role="status">
         <span data-testid="llm-status">{statusText}</span>
@@ -641,6 +646,9 @@ export function HumanVsLlmPage(): React.JSX.Element {
             newGame()
           }}
         />
+      )}
+      {savingRecord && (
+        <RecordSaveDialog store={store} mode="humanVsLlm" onClose={() => setSavingRecord(false)} />
       )}
       {toast !== null && <div className="cc-snackbar">{toast}</div>}
     </div>

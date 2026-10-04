@@ -10,6 +10,8 @@ import { HumanVsAiPage } from '@renderer/features/board/HumanVsAiPage'
 import { HumanVsLlmPage } from '@renderer/features/board/HumanVsLlmPage'
 import { LlmVsLlmPage } from '@renderer/features/board/LlmVsLlmPage'
 import { CorpusBrowserPage } from '@renderer/features/puzzle/CorpusBrowserPage'
+import { RecordLibraryPage } from '@renderer/features/record/RecordLibraryPage'
+import { RecordDetailPage } from '@renderer/features/record/RecordDetailPage'
 import { api } from '@renderer/ipc/client'
 import { notifyLifecycle } from '@renderer/stores/lifecycleRegistry'
 
@@ -62,7 +64,8 @@ export default function App(): React.JSX.Element {
         <Route path="/human-vs-llm" element={<HumanVsLlmPage />} />
         <Route path="/llm-vs-llm" element={<LlmVsLlmPage />} />
         <Route path="/endgame-studio" element={<PlaceholderPage title="残局工作室" milestone="M6" />} />
-        <Route path="/record-library" element={<PlaceholderPage title="棋谱库" milestone="M5" />} />
+        <Route path="/record-library" element={<RecordLibraryPage />} />
+        <Route path="/record-library/:id" element={<RecordDetailPage />} />
       </Routes>
     </MemoryRouter>
   )

@@ -12,6 +12,7 @@ import { createGameStore } from '@renderer/stores/createGameStore'
 import { GameAutoSave } from '@renderer/stores/gameAutoSave'
 import { restoreOrNewGame } from '@renderer/stores/gameRestore'
 import { recordFromSession, writeShareText } from '@packages/storage-schema'
+import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, MoveRecordsList, ResultBanner } from './sidePanel'
 import { api } from '@renderer/ipc/client'
@@ -45,6 +46,7 @@ export function HumanVsHumanPage(): React.JSX.Element {
   )
 
   const [showMoveRecords, setShowMoveRecords] = useState(false)
+  const [savingRecord, setSavingRecord] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -153,6 +155,9 @@ export function HumanVsHumanPage(): React.JSX.Element {
         <button type="button" className="cc-btn" onClick={() => setConfirmingNewGame(true)}>
           新游戏
         </button>
+        <button type="button" className="cc-btn" onClick={() => setSavingRecord(true)}>
+          保存为棋谱
+        </button>
         <button type="button" className="cc-btn" onClick={undoMove}>
           悔棋
         </button>
@@ -207,6 +212,9 @@ export function HumanVsHumanPage(): React.JSX.Element {
             newGame()
           }}
         />
+      )}
+      {savingRecord && (
+        <RecordSaveDialog store={store} mode="humanVsHuman" onClose={() => setSavingRecord(false)} />
       )}
       {toast !== null && <div className="cc-snackbar">{toast}</div>}
     </div>

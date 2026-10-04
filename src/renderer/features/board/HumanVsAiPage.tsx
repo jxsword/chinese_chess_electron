@@ -24,6 +24,7 @@ import { EngineClient } from '@renderer/workers/engineClient'
 import { BoardView } from './BoardView'
 import { ConfirmDialog, ResultBanner } from './sidePanel'
 import { api } from '@renderer/ipc/client'
+import { RecordSaveDialog } from '@renderer/features/record/RecordSaveDialog'
 
 const DIFFICULTY_LEVELS = [1, 2, 3, 4, 5] as const
 
@@ -39,6 +40,7 @@ export function HumanVsAiPage(): React.JSX.Element {
   const [difficulty, setDifficulty] = useState(3)
   const [isAiThinking, setAiThinking] = useState(false)
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
+  const [savingRecord, setSavingRecord] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   // 每局一实例：进入页面创建，离开丢弃（铁律 #6）
@@ -299,6 +301,9 @@ export function HumanVsAiPage(): React.JSX.Element {
             保存棋局
           </button>
         )}
+        <button type="button" className="cc-btn" onClick={() => setSavingRecord(true)}>
+          保存为棋谱
+        </button>
       </header>
       <div className={`cc-status-bar ${statusClass}`} role="status">
         <span>{statusText}</span>
@@ -343,6 +348,9 @@ export function HumanVsAiPage(): React.JSX.Element {
           onCancel={() => navigate(-1)}
           onConfirm={() => newGame()}
         />
+      )}
+      {savingRecord && (
+        <RecordSaveDialog store={store} mode="humanVsAi" onClose={() => setSavingRecord(false)} />
       )}
       {toast !== null && <div className="cc-snackbar">{toast}</div>}
     </div>
