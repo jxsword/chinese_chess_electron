@@ -210,9 +210,10 @@ export class LlmProxy {
   /**
    * 配置卡"测试连接"（cc:llm:testConnection）：单次最小流式请求，
    * 收集结局返回结果（llm_move_source.dart:488-497 语义，主进程执行）。
+   * authSlot：掩码 Key 场景按槽位注入真实 Authorization（DR-010）。
    */
-  async testConnection(config: LlmEndpointConfig): Promise<LlmTestConnectionResult> {
-    const built = buildTestConnectionChat(config)
+  async testConnection(config: LlmEndpointConfig, authSlot?: SecureSlot): Promise<LlmTestConnectionResult> {
+    const built = buildTestConnectionChat(config, authSlot)
     const requestId = `test-conn-${Date.now()}-${++testConnCounter}`
     return await new Promise<LlmTestConnectionResult>((resolve) => {
       void this.chat(

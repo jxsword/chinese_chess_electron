@@ -37,8 +37,8 @@ export interface WindowApi {
     chat(req: LlmChatRequest): Promise<void>
     /** 取消在途请求（主进程 AbortController.abort，00 文档 §3.2） */
     cancel(requestId: string): Promise<void>
-    /** 配置卡"测试连接"（单次非流式，标准 promise 语义） */
-    testConnection(config: LlmEndpointConfig): Promise<LlmTestConnectionResult>
+    /** 配置卡"测试连接"（单次非流式，标准 promise 语义）；authSlot 供主进程注入掩码 Key（DR-010） */
+    testConnection(config: LlmEndpointConfig, authSlot?: SecureSlot): Promise<LlmTestConnectionResult>
     onChunk(listener: (e: LlmChunkEvent) => void): Unsubscribe
     onDone(listener: (e: LlmDoneEvent) => void): Unsubscribe
     onError(listener: (e: LlmErrorEvent) => void): Unsubscribe

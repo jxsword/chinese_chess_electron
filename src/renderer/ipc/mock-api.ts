@@ -87,8 +87,7 @@ export function createMockApi(): WindowApi {
       testConnection: async () => {
         await delay(IO_DELAY_MS)
         return { ok: true, message: 'mock 连接成功（浏览器模式，未发起真实网络请求）' }
-      },
-      onChunk: (listener) => {
+      },onChunk: (listener) => {
         chunkListeners.add(listener)
         return () => chunkListeners.delete(listener)
       },

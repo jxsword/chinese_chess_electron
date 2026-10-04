@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { HomePage } from './HomePage'
 import { HumanVsHumanPage } from '@renderer/features/board/HumanVsHumanPage'
 import { HumanVsAiPage } from '@renderer/features/board/HumanVsAiPage'
+import { HumanVsLlmPage } from '@renderer/features/board/HumanVsLlmPage'
 import { api } from '@renderer/ipc/client'
 import { notifyLifecycle } from '@renderer/stores/lifecycleRegistry'
 
@@ -56,7 +57,7 @@ export default function App(): React.JSX.Element {
         <Route path="/human-vs-human" element={<HumanVsHumanPage />} />
         <Route path="/puzzle" element={<PlaceholderPage title="残局选关" milestone="M5/M6" />} />
         <Route path="/human-vs-ai" element={<HumanVsAiPage />} />
-        <Route path="/human-vs-llm" element={<PlaceholderPage title="人机对战（大模型）" milestone="M4" />} />
+        <Route path="/human-vs-llm" element={<HumanVsLlmPage />} />
         <Route path="/llm-vs-llm" element={<PlaceholderPage title="大模型对战" milestone="M4" />} />
         <Route path="/endgame-studio" element={<PlaceholderPage title="残局工作室" milestone="M6" />} />
         <Route path="/record-library" element={<PlaceholderPage title="棋谱库" milestone="M5" />} />

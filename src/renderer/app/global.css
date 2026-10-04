@@ -365,3 +365,53 @@ body {
   gap: 12px;
   color: #6d5d54;
 }
+
+/* LLM 配置卡与对局设置（08 文档 §3.3，T4.5） */
+.cc-llm-config,
+.cc-card[data-testid='llm-game-settings'] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cc-llm-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.cc-llm-field > span:first-child {
+  width: 110px;
+  flex: none;
+  color: #5a4a42;
+}
+.cc-llm-field select,
+.cc-llm-field input[type='text'],
+.cc-llm-field input[type='password'] {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #d8cfc7;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 13px;
+}
+.cc-llm-field-check {
+  align-items: flex-start;
+}
+.cc-llm-field-check input {
+  margin-top: 3px;
+}
+.cc-llm-test-ok {
+  font-size: 12px;
+  color: #2e7d32;
+  white-space: pre-wrap;
+}
+.cc-llm-test-fail {
+  font-size: 12px;
+  color: #c62828;
+  white-space: pre-wrap;
+}
+.cc-status-note {
+  background: rgba(123, 31, 162, 0.08);
+  color: #6a1b9a;
+}

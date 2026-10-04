@@ -107,9 +107,15 @@ export function buildChatRequest(
 export const TEST_CONNECTION_SYSTEM = '你是一个连通性测试助手。'
 export const TEST_CONNECTION_USER = '请回复：ok'
 
-/** 配置卡"测试连接"请求（单次流式，v1 预算）。 */
-export function buildTestConnectionChat(config: LlmEndpointConfig): BuiltChatRequest {
-  return buildChatRequest(config, TEST_CONNECTION_SYSTEM, TEST_CONNECTION_USER, { useV2: false })
+/** 配置卡"测试连接"请求（单次流式，v1 预算；authSlot 供主进程注入，DR-010）。 */
+export function buildTestConnectionChat(
+  config: LlmEndpointConfig,
+  authSlot?: SecureSlot
+): BuiltChatRequest {
+  return buildChatRequest(config, TEST_CONNECTION_SYSTEM, TEST_CONNECTION_USER, {
+    useV2: false,
+    authSlot
+  })
 }
 
 /** 常用 OpenAI 兼容端点预设（仅公开地址与示例模型 ID，不含任何凭据；llm_config.dart:88-104）。 */

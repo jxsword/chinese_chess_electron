@@ -5,7 +5,7 @@
  */
 import { ipcMain } from 'electron'
 import { CC } from '@shared/ipc/channels'
-import type { LlmChatRequest, LlmEndpointConfig } from '@shared/ipc/types'
+import type { LlmChatRequest, LlmEndpointConfig, SecureSlot } from '@shared/ipc/types'
 import type { LlmProxy, LlmProxySender } from '../services/llm-proxy'
 
 export function registerLlmIpc(proxy: LlmProxy): void {
@@ -29,7 +29,10 @@ export function registerLlmIpc(proxy: LlmProxy): void {
     proxy.cancel(req.requestId)
   })
 
-  ipcMain.handle(CC.llm.testConnection, (_event, req: { config: LlmEndpointConfig }) => {
-    return proxy.testConnection(req.config)
-  })
+  ipcMain.handle(
+    CC.llm.testConnection,
+    (_event, req: { config: LlmEndpointConfig; authSlot?: SecureSlot }) => {
+      return proxy.testConnection(req.config, req.authSlot)
+    }
+  )
 }

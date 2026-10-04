@@ -35,7 +35,8 @@ const api: WindowApi = {
   llm: {
     chat: (req: LlmChatRequest) => ipcRenderer.invoke(CC.llm.chat, req),
     cancel: (requestId: string) => ipcRenderer.invoke(CC.llm.cancel, { requestId }),
-    testConnection: (config: LlmEndpointConfig) => ipcRenderer.invoke(CC.llm.testConnection, { config }),
+    testConnection: (config: LlmEndpointConfig, authSlot?: SecureSlot) =>
+      ipcRenderer.invoke(CC.llm.testConnection, { config, authSlot }),
     onChunk: (listener: (e: LlmChunkEvent) => void) => subscribe<LlmChunkEvent>(CC.llm.chunk, listener),
     onDone: (listener: (e: LlmDoneEvent) => void) => subscribe<LlmDoneEvent>(CC.llm.done, listener),
     onError: (listener: (e: LlmErrorEvent) => void) => subscribe<LlmErrorEvent>(CC.llm.error, listener)

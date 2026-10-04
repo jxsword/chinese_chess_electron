@@ -95,3 +95,4 @@
 - 理由: 兼顾安全铁律与"保存即生效"的使用流；B 的唯一增益（渲染层零鉴权）牺牲即时可用性，而掩码检测（**** 前缀）由 buildChatRequest 统一收口，两态都有测试锁定。
 - 影响: src/shared/ipc/types.ts、src/main/services/llm-proxy.ts、credentials.ts（getRaw）、packages/llm/config.ts、llmPlayer.ts、renderer/llm/llmTransport.ts；M6 cc:vision:readBoard 沿用同方案。
 - 记录时间 / 会话: 2026-10-04（M4 会话）
+- 追记（2026-10-04, M4 会话）: cc:llm:testConnection 载荷同样扩展可选 authSlot（{config, authSlot?}），掩码 Key 场景测试连接经主进程注入；原理与方案 A 一致。
