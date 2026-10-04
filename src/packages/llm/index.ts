@@ -67,8 +67,11 @@ export {
   VISION_LLM_PRESETS,
   buildChatRequest,
   buildTestConnectionChat,
+  isEmptyLlmConfig,
   isConfigured,
   requestUrl,
+  resolveLlmSideConfig,
   type BuiltChatRequest,
-  type LlmPreset
+  type LlmPreset,
+  type ResolvedLlmSideConfig
 } from './config'

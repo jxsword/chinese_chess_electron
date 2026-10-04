@@ -118,6 +118,40 @@ export function buildTestConnectionChat(
   })
 }
 
+// ---------------------------------------------------------------------------
+// 双方共用模型（DR-012）：空配置一侧运行时跟随对方
+// ---------------------------------------------------------------------------
+
+/** 是否三个字段全部为空（含纯空白）——空侧允许镜像对方的配置（DR-012）。 */
+export function isEmptyLlmConfig(config: LlmEndpointConfig): boolean {
+  return config.baseUrl.trim() === '' && config.apiKey.trim() === '' && config.model.trim() === ''
+}
+
+export interface ResolvedLlmSideConfig {
+  /** 实际生效的配置（空侧 = 对方的配置） */
+  config: LlmEndpointConfig
+  /** 掩码 Key 回读时主进程注入鉴权的槽位（DR-010）：镜像时为对方槽位 */
+  authSlot?: SecureSlot
+}
+
+/**
+ * 解析对局中一方实际生效的配置（DR-012）：自身三字段全空 → 返回对方配置
+ * 与对方槽位（运行时跟随，不落盘——对方后续改动即时生效）；否则返回自身。
+ * 注意：仅"全空"触发镜像；填了部分字段（如只填 Key）仍是独立无效配置，
+ * 由开始校验拦截并提示。
+ */
+export function resolveLlmSideConfig(
+  own: LlmEndpointConfig,
+  other: LlmEndpointConfig,
+  ownSlot: SecureSlot,
+  otherSlot: SecureSlot
+): ResolvedLlmSideConfig {
+  if (isEmptyLlmConfig(own)) {
+    return { config: other, authSlot: otherSlot }
+  }
+  return { config: own, authSlot: ownSlot }
+}
+
 /** 常用 OpenAI 兼容端点预设（仅公开地址与示例模型 ID，不含任何凭据；llm_config.dart:88-104）。 */
 export interface LlmPreset {
   name: string

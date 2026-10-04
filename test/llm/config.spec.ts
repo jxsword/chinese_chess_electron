@@ -11,8 +11,10 @@ import {
   TEST_CONNECTION_USER,
   buildChatRequest,
   buildTestConnectionChat,
+  isEmptyLlmConfig,
   isConfigured,
   requestUrl,
+  resolveLlmSideConfig,
   LlmConfigError
 } from '@packages/llm'
 import type { LlmEndpointConfig } from '@shared/ipc/types'
@@ -130,6 +132,44 @@ describe('buildTestConnectionChat（最小请求）', () => {
     expect(TEST_CONNECTION_USER).toBe('请回复：ok')
     expect(body['max_tokens']).toBe(MAX_TOKENS_V1)
     expect(body['stream']).toBe(true)
+  })
+})
+
+describe('双方共用模型：空侧运行时跟随对方（DR-012）', () => {
+  const RED_SLOT = 'llm_config_red' as const
+  const BLACK_SLOT = 'llm_config_black' as const
+
+  const empty = (): LlmEndpointConfig => ({ baseUrl: '', apiKey: '', model: '', disableThinking: true })
+
+  it('三字段全空（含纯空白）→ 镜像对方配置与对方槽位', () => {
+    const other = cfg({ baseUrl: 'https://a.com/v1', apiKey: 'sk-x', model: 'm' })
+    expect(isEmptyLlmConfig(empty())).toBe(true)
+    expect(isEmptyLlmConfig({ ...empty(), baseUrl: ' ' })).toBe(true)
+    const r = resolveLlmSideConfig(empty(), other, RED_SLOT, BLACK_SLOT)
+    expect(r.config).toEqual(other)
+    expect(r.authSlot).toBe(BLACK_SLOT)
+  })
+
+  it('填了任一字段（哪怕只填 Key）→ 不镜像，槽位为自身', () => {
+    const own = { ...empty(), apiKey: 'sk-only-key' }
+    const other = cfg({ baseUrl: 'https://a.com/v1', model: 'm' })
+    expect(isEmptyLlmConfig(own)).toBe(false)
+    const r = resolveLlmSideConfig(own, other, RED_SLOT, BLACK_SLOT)
+    expect(r.config).toEqual(own)
+    expect(r.authSlot).toBe(RED_SLOT)
+    expect(isConfigured(r.config)).toBe(false) // 独立无效配置由开始校验拦截
+  })
+
+  it('双方都配了同一个模型 → 各用各的（互不影响）', () => {
+    const a = cfg({ baseUrl: 'https://a.com/v1', apiKey: 'sk-a', model: 'same-model' })
+    const b = cfg({ baseUrl: 'https://a.com/v1', apiKey: 'sk-b', model: 'same-model' })
+    expect(resolveLlmSideConfig(a, b, RED_SLOT, BLACK_SLOT).authSlot).toBe(RED_SLOT)
+    expect(resolveLlmSideConfig(b, a, BLACK_SLOT, RED_SLOT).authSlot).toBe(BLACK_SLOT)
+  })
+
+  it('双方都空 → 相互镜像后仍为空（开始校验拦截）', () => {
+    const r = resolveLlmSideConfig(empty(), empty(), RED_SLOT, BLACK_SLOT)
+    expect(isConfigured(r.config)).toBe(false)
   })
 })
 

@@ -186,14 +186,20 @@ export function HumanVsLlmPage(): React.JSX.Element {
     setLlmThinking(true)
     setLlmNote('')
 
-    const player = new HybridLlmPlayer(cfg, transport, client, {
-      advisorMode: st.advisorMode,
-      strengthBlend: st.strengthBlend,
-      advisorDifficulty: st.advisorDifficulty,
-      maxAttempts: st.maxAttempts,
-      fallback: st.fallback,
-      builtinAiSource: () => new ChessAiPlayer(client, 3)
-    })
+    const player = new HybridLlmPlayer(
+      cfg,
+      transport,
+      client,
+      {
+        advisorMode: st.advisorMode,
+        strengthBlend: st.strengthBlend,
+        advisorDifficulty: st.advisorDifficulty,
+        maxAttempts: st.maxAttempts,
+        fallback: st.fallback,
+        builtinAiSource: () => new ChessAiPlayer(client, 3)
+      },
+      { authSlot: BLACK_SLOT } // 掩码 Key 回读时主进程按槽位注入（DR-010）
+    )
     playerRef.current = player
     void player.nextMove(boardSnapshot, history).then(
       (result: MoveSourceResult): void => {

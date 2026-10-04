@@ -13,7 +13,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from 'zustand'
 import { chineseNotation } from '@packages/rules'
-import { isConfigured, type AdvisorMode, type LlmFallback, type LlmGameSettings } from '@packages/llm'
+import {
+  isEmptyLlmConfig,
+  isConfigured,
+  resolveLlmSideConfig,
+  type AdvisorMode,
+  type LlmFallback,
+  type LlmGameSettings
+} from '@packages/llm'
 import { HybridLlmPlayer } from '@packages/llm'
 import type { LlmEndpointConfig } from '@shared/ipc/types'
 import type { MoveSourceResult } from '@packages/engine'
@@ -198,20 +205,30 @@ export function LlmVsLlmPage(): React.JSX.Element {
         return
       }
       const isRedTurn = vm.isRedTurn
-      const config = isRedTurn ? red : black
+      // 空配置一侧运行时跟随对方（DR-012）；authSlot 随生效配置来源（DR-010）。
+      const resolved = isRedTurn
+        ? resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT)
+        : resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT)
+      const config = resolved.config
       setStatusText(`${isRedTurn ? '红方' : '黑方'}（${config.model.trim()}）思考中…`)
 
       // await 前快照棋盘与历史。
       const boardSnapshot = vm.board.copy()
       const history = [...vm.current.moveHistory]
-      const player = new HybridLlmPlayer(config, transport, client, {
-        advisorMode: st.advisorMode,
-        strengthBlend: isRedTurn ? st.redStrengthBlend : st.blackStrengthBlend,
-        advisorDifficulty: st.advisorDifficulty,
-        maxAttempts: st.maxAttempts,
-        fallback: st.fallback,
-        builtinAiSource: () => new ChessAiPlayer(client, 3)
-      })
+      const player = new HybridLlmPlayer(
+        config,
+        transport,
+        client,
+        {
+          advisorMode: st.advisorMode,
+          strengthBlend: isRedTurn ? st.redStrengthBlend : st.blackStrengthBlend,
+          advisorDifficulty: st.advisorDifficulty,
+          maxAttempts: st.maxAttempts,
+          fallback: st.fallback,
+          builtinAiSource: () => new ChessAiPlayer(client, 3)
+        },
+        { authSlot: resolved.authSlot }
+      )
       playerRef.current = player
       let result: MoveSourceResult
       try {
@@ -264,7 +281,11 @@ export function LlmVsLlmPage(): React.JSX.Element {
   const start = useCallback((): void => {
     const red = redRef.current
     const black = blackRef.current
-    if (red === null || black === null || !isConfigured(red) || !isConfigured(black)) {
+    if (red === null || black === null) return
+    // 空配置一侧运行时跟随对方（DR-012）：按生效配置校验。
+    const redEff = resolveLlmSideConfig(red, black, RED_SLOT, BLACK_SLOT).config
+    const blackEff = resolveLlmSideConfig(black, red, BLACK_SLOT, RED_SLOT).config
+    if (!isConfigured(redEff) || !isConfigured(blackEff)) {
       showToast('请先为红黑双方填写端点地址与模型 ID')
       return
     }
@@ -384,26 +405,40 @@ export function LlmVsLlmPage(): React.JSX.Element {
             {lastMoveText !== '' && <div data-testid="llm-last-move">{lastMoveText}</div>}
           </div>
           {redConfig !== null && (
-            <LlmConfigCard
-              title="红方模型"
-              slot={RED_SLOT}
-              config={redConfig}
-              onChange={(c) => {
-                setRedConfig(c)
-                scheduleAutosave()
-              }}
-            />
+            <div>
+              <LlmConfigCard
+                title="红方模型"
+                slot={RED_SLOT}
+                config={redConfig}
+                onChange={(c) => {
+                  setRedConfig(c)
+                  scheduleAutosave()
+                }}
+              />
+              {isEmptyLlmConfig(redConfig) && blackConfig !== null && isConfigured(blackConfig) && (
+                <div className="cc-settings-hint" data-testid="red-mirror-hint">
+                  未配置——对局时将使用黑方的模型配置
+                </div>
+              )}
+            </div>
           )}
           {blackConfig !== null && (
-            <LlmConfigCard
-              title="黑方模型"
-              slot={BLACK_SLOT}
-              config={blackConfig}
-              onChange={(c) => {
-                setBlackConfig(c)
-                scheduleAutosave()
-              }}
-            />
+            <div>
+              <LlmConfigCard
+                title="黑方模型"
+                slot={BLACK_SLOT}
+                config={blackConfig}
+                onChange={(c) => {
+                  setBlackConfig(c)
+                  scheduleAutosave()
+                }}
+              />
+              {isEmptyLlmConfig(blackConfig) && redConfig !== null && isConfigured(redConfig) && (
+                <div className="cc-settings-hint" data-testid="black-mirror-hint">
+                  未配置——对局时将使用红方的模型配置
+                </div>
+              )}
+            </div>
           )}
           {st !== null && (
             <div className="cc-card" data-testid="llm-game-settings">

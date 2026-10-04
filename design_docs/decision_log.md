@@ -108,3 +108,13 @@
 - 理由: A 与 B 的落盘强度实际相同（混淆明文），但 A 只影响回退场景且向用户明示；C/D 在目标环境不可行。真实加密路径（safeStorage 可用）行为不变，00 §3.1 的 secure 通道响应本就未锁定，扩展返回值无协议破坏。
 - 影响: src/main/services/credentials.ts、shared/ipc/types.ts（SecureSetResult）、api.ts/preload/mock-api/ipc/store、两个人机 LLM 页保存反馈；07 §4 文档描述需同步（明文回退分支）。
 - 记录时间 / 会话: 2026-10-04（M4 实机会话）
+
+## DR-012 2026-10-04 大模型对战空配置一侧运行时跟随对方（不落盘） [状态: 生效]
+- 背景: 用户需求"双方可以用同一个大模型对战——当一方所有参数为空时，使用另一方的大模型配置"。三槽位凭据存储下需要决定"跟随"的落点。
+- 选项:
+  - A. 运行时解析（已采纳）：开始校验与每手棋构造棋手时按 resolveLlmSideConfig 取生效配置（自身 baseUrl/apiKey/model 全空 → 用对方配置与对方槽位）；配置卡下方显示"未配置——对局时将使用X方的模型配置"提示。优点: 空侧动态跟随，对方改动即时生效；不写空槽位，语义清晰（"空=跟随"可随时反向修改）；掩码 Key 的 authSlot 随生效配置来源槽位（与 DR-010 闭环）。缺点: 每手解析一次（微不足道）。
+  - B. 保存时把对方配置复制进空槽位: 两槽从此独立，后续改动不同步，"跟随"关系丢失；用户想解除跟随需手动清空。弃。
+  - C. 配置卡加"跟随对方"显式开关: 语义最明确，但增加 UI 复杂度，超出需求（"全空=跟随"规则本身已足够直观）。弃。
+- 边界: 仅"三字段全空（含纯空白）"触发镜像；填了部分字段（如只填 Key）是独立无效配置，仍由开始校验拦截并提示；双方全空 → 相互镜像后仍空，照旧拦截。附带修复: HumanVsLlmPage/LlmVsLlmPage 构造 HybridLlmPlayer 时漏传 authSlot（DR-010 闭环缺口）——重启后掩码 Key 回读场景对局请求会全部失败，此前被"手输 Key 未重启"掩盖。
+- 影响: packages/llm/config.ts（isEmptyLlmConfig/resolveLlmSideConfig）、LlmVsLlmPage（start/runLoop/提示）、HumanVsLlmPage（authSlot）；测试 config.spec 4 例 + llmVsLlm.spec 07。
+- 记录时间 / 会话: 2026-10-04（M4 增量会话）

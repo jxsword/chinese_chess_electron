@@ -125,6 +125,32 @@ describe('大模型对战页（08 §3.4 / 05 §8.1）', () => {
     expect(screen.queryByTestId('llm-last-move')).toBeNull()
   })
 
+  it('07 一方全空 → 跟随另一方模型对局（DR-012）：提示可见、开始不被拦截', async () => {
+    // 只配置黑方；红方槽位清空（防上一用例残留）→ 红方运行时使用黑方配置
+    await api.secure.delete('llm_config_red')
+    await api.secure.set('llm_config_black', { ...CONFIG, model: 'test-model-b' })
+    renderPage()
+    await screen.findAllByTestId('llm-config-card')
+    // 红方卡下方出现跟随提示，黑方无提示
+    await waitFor(() => expect(screen.getByTestId('red-mirror-hint')).not.toBeNull())
+    expect(screen.queryByTestId('black-mirror-hint')).toBeNull()
+    // 开始：不弹"请先填写"拦截，直接进入红方思考（模型名来自黑方配置）
+    fireEvent.click(screen.getByTestId('llm-loop-toggle'))
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('llm-loop-status').textContent).toContain(
+          '红方（test-model-b）思考中'
+        ),
+      { timeout: 20_000 }
+    )
+    // 红方兜底落子后循环继续（黑方配置独立有效）
+    await waitFor(
+      () => expect(screen.getByTestId('llm-black-note')).not.toBeNull(),
+      { timeout: 20_000 }
+    )
+    fireEvent.click(screen.getByText('停止'))
+  }, 60_000)
+
   it('06 新游戏：清空状态区并回到等待开始', async () => {
     await seedBothConfigs()
     renderPage()
