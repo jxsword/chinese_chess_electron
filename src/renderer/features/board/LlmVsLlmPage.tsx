@@ -494,6 +494,30 @@ export function LlmVsLlmPage(): React.JSX.Element {
               )}
             </div>
           )}
+          <div className="cc-button-row">
+            <button
+              type="button"
+              className="cc-btn"
+              data-testid="llm-save-now"
+              onClick={() => {
+                const red = redRef.current
+                const black = blackRef.current
+                if (red === null || black === null) return
+                void Promise.all([api.secure.set(RED_SLOT, red), api.secure.set(BLACK_SLOT, black)])
+                  .then(([r, b]) =>
+                    showToast(
+                      r.stored === 'plainFallback' || b.stored === 'plainFallback'
+                        ? '双方模型配置已保存（系统安全存储不可用，已明文保存到本地）'
+                        : '双方模型配置已保存'
+                    )
+                  )
+                  .catch(() => showToast('保存失败：本地存储不可用'))
+                if (st !== null) void saveLlmSettings(st)
+              }}
+            >
+              立即保存
+            </button>
+          </div>
         </div>
       </div>
 

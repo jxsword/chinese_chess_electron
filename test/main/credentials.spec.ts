@@ -102,9 +102,54 @@ describe('CredentialsService（safeStorage 三槽位语义）', () => {
     expect(() => svc.delete('llm_config_red')).not.toThrow()
   })
 
-  it('安全存储不可用：set 抛错且不落盘，get 按未配置', () => {
+  it('安全存储不可用：明文回退文件落盘且读取掩码（DR-011）', () => {
     const svc = new CredentialsService(fakeCryptor(true), filePath)
-    expect(() => svc.set('llm_config_red', CONFIG)).toThrow('安全存储不可用')
+    expect(svc.set('llm_config_red', CONFIG)).toEqual({ stored: 'plainFallback' })
+    // 回退文件路径与内容（明文本就是回退的目的，含完整 Key）
+    const plainPath = `${filePath}.plain.json`
+    const raw = readFileSync(plainPath, 'utf8')
+    expect(raw).toContain(CONFIG.apiKey)
+    // 渲染层仍只见掩码
+    const got = svc.get('llm_config_red')!
+    expect(got.model).toBe(CONFIG.model)
+    expect(got.apiKey).toBe('****abcd')
+    expect(JSON.stringify(got)).not.toContain(CONFIG.apiKey)
+    // getRaw（主进程注入鉴权用）拿到完整 Key
+    expect(svc.getRaw('llm_config_red')!.apiKey).toBe(CONFIG.apiKey)
+  })
+
+  it('加密文件优先于明文回退文件（双文件贯通）', () => {
+    // 先明文保存（安全存储不可用）
+    const plainSvc = new CredentialsService(fakeCryptor(true), filePath)
+    expect(plainSvc.set('llm_config_red', { ...CONFIG, model: 'plain-model' })).toEqual({
+      stored: 'plainFallback'
+    })
+    // 再加密保存同槽位（安全存储恢复可用）
+    const encSvc = new CredentialsService(fakeCryptor(), filePath)
+    expect(encSvc.set('llm_config_red', { ...CONFIG, model: 'enc-model' })).toEqual({
+      stored: 'encrypted'
+    })
+    // 读取以加密文件为准
+    const reader = new CredentialsService(fakeCryptor(), filePath)
+    expect(reader.get('llm_config_red')!.model).toBe('enc-model')
+    // delete 清理双文件
+    reader.delete('llm_config_red')
+    expect(reader.get('llm_config_red')).toBeNull()
+    // 明文文件仍保留 black 槽位（如曾写入）→ 单独验证 black 明文写入/读取/删除
+    expect(plainSvc.set('llm_config_black', { ...CONFIG, model: 'plain-b' })).toEqual({
+      stored: 'plainFallback'
+    })
+    expect(reader.get('llm_config_black')!.model).toBe('plain-b')
+    reader.delete('llm_config_black')
+    expect(reader.get('llm_config_black')).toBeNull()
+  })
+
+  it('回退文件损坏 → 按未配置（不抛错）', () => {
+    const svc = new CredentialsService(fakeCryptor(true), filePath)
+    writeFileSync(`${filePath}.plain.json`, '{corrupt', 'utf8')
     expect(svc.get('llm_config_red')).toBeNull()
+    // 损坏后写入重建
+    expect(svc.set('llm_config_red', CONFIG)).toEqual({ stored: 'plainFallback' })
+    expect(svc.get('llm_config_red')!.model).toBe(CONFIG.model)
   })
 })

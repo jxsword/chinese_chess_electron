@@ -23,7 +23,8 @@ import type {
   SaveFileRequest,
   FileContent,
   AppLifecycleEvent,
-  SecureSlot
+  SecureSlot,
+  SecureSetResult
 } from './types'
 
 export interface WindowApi {
@@ -63,7 +64,8 @@ export interface WindowApi {
   secure: {
     /** 读取槽位：apiKey 已按 maskedApiKey 语义掩码（****+末4位），完整 Key 不回渲染层（07 文档 §4） */
     get(slot: SecureSlot): Promise<LlmEndpointConfig | null>
-    set(slot: SecureSlot, payload: LlmEndpointConfig): Promise<void>
+    /** 写入槽位；返回实际落盘方式（DR-011：明文回退时界面如实提示） */
+    set(slot: SecureSlot, payload: LlmEndpointConfig): Promise<SecureSetResult>
     delete(slot: SecureSlot): Promise<void>
   }
   corpus: {

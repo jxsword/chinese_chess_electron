@@ -12,7 +12,8 @@ import type {
   SavedGame,
   SaveGameRequest,
   GameRecord,
-  GameRecordSummary
+  GameRecordSummary,
+  SecureSetResult
 } from '@shared/ipc/types'
 
 // 浏览器 mock 实现（00 文档 §6）：LLM 用本地模拟 SSE、DB/存储用内存实现。
@@ -175,9 +176,10 @@ export function createMockApi(): WindowApi {
         await delay(IO_DELAY_MS)
         return secureMap.get(slot) ?? null
       },
-      set: async (slot, payload) => {
+      set: async (slot, payload): Promise<SecureSetResult> => {
         await delay(IO_DELAY_MS)
         secureMap.set(slot, payload)
+        return { stored: 'encrypted' } // mock 无明文回退场景
       },
       delete: async (slot) => {
         await delay(IO_DELAY_MS)

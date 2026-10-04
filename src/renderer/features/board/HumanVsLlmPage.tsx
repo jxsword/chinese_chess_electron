@@ -511,8 +511,14 @@ export function HumanVsLlmPage(): React.JSX.Element {
                 if (config === null) return
                 void api.secure
                   .set(BLACK_SLOT, config)
-                  .then(() => showToast('模型配置已保存'))
-                  .catch(() => showToast('保存失败：安全存储不可用'))
+                  .then((res) =>
+                    showToast(
+                      res.stored === 'plainFallback'
+                        ? '模型配置已保存（系统安全存储不可用，已明文保存到本地）'
+                        : '模型配置已保存'
+                    )
+                  )
+                  .catch(() => showToast('保存失败：本地存储不可用'))
                 if (st !== null && lastLoadedRef.current !== null) {
                   void saveLlmSettings({ ...lastLoadedRef.current, ...st })
                 }

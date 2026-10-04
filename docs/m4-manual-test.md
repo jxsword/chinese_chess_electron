@@ -13,6 +13,10 @@
   页面配置卡填：端点 `http://127.0.0.1:8787/v1` · Key 任意 · 模型 `mock-chess`。
 - B. 真实端点：智谱 GLM（`https://open.bigmodel.cn/api/paas/v4` + `glm-4-flash`）
   或 DeepSeek（`https://api.deepseek.com/v1` + `deepseek-chat`），填 Key → 测试连接。
+- 注（WSL）：未运行 gnome-keyring/Secret Service 的环境，系统安全存储不可用，
+  凭据自动明文回退到 `userData/credentials.fallback.json`（0600，DR-011），
+  「立即保存」会如实提示；若需真加密，可 `sudo apt install gnome-keyring` 并在
+  dbus 会话内启动 keyring 后重启应用。
 
 ## 用例（每项记录 结果/截图）
 

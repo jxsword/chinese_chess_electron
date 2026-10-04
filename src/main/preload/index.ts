@@ -17,7 +17,8 @@ import type {
   LlmChatRequest,
   VisionReadBoardRequest,
   CorpusDownloadRequest,
-  SaveFileRequest
+  SaveFileRequest,
+  SecureSetResult
 } from '@shared/ipc/types'
 
 // Preload 层（00 文档 §2 职责铁律）：仅把 WindowApi 逐通道转发到 ipcRenderer，
@@ -59,7 +60,8 @@ const api: WindowApi = {
   },
   secure: {
     get: (slot: SecureSlot) => ipcRenderer.invoke(CC.secure.get, { slot }),
-    set: (slot: SecureSlot, payload: LlmEndpointConfig) => ipcRenderer.invoke(CC.secure.set, { slot, payload }),
+    set: (slot: SecureSlot, payload: LlmEndpointConfig): Promise<SecureSetResult> =>
+      ipcRenderer.invoke(CC.secure.set, { slot, payload }),
     delete: (slot: SecureSlot) => ipcRenderer.invoke(CC.secure.delete, { slot })
   },
   corpus: {

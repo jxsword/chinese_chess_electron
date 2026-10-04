@@ -192,7 +192,7 @@ describe('mock api 行为', () => {
       disableThinking: true
     }
     expect(await api.secure.get('llm_config_red')).toBeNull()
-    await api.secure.set('llm_config_red', cfg)
+    expect(await api.secure.set('llm_config_red', cfg)).toEqual({ stored: 'encrypted' })
     expect(await api.secure.get('llm_config_red')).toEqual(cfg)
     await api.secure.delete('llm_config_red')
     expect(await api.secure.get('llm_config_red')).toBeNull()

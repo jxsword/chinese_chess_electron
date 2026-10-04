@@ -16,9 +16,9 @@ export function registerStoreIpc(settings: SettingsService): void {
 
 export function registerSecureIpc(credentials: CredentialsService): void {
   ipcMain.handle(CC.secure.get, (_event, req: { slot: SecureSlot }) => credentials.get(req.slot))
-  ipcMain.handle(CC.secure.set, (_event, req: { slot: SecureSlot; payload: LlmEndpointConfig }) => {
+  ipcMain.handle(CC.secure.set, (_event, req: { slot: SecureSlot; payload: LlmEndpointConfig }) =>
     credentials.set(req.slot, req.payload)
-  })
+  )
   ipcMain.handle(CC.secure.delete, (_event, req: { slot: SecureSlot }) => {
     credentials.delete(req.slot)
   })

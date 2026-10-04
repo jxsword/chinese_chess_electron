@@ -69,6 +69,12 @@ export interface LlmTestConnectionResult {
   message: string
 }
 
+/** cc:secure:set 结果（DR-011）：主进程如实回报凭据落盘方式 */
+export interface SecureSetResult {
+  /** encrypted = safeStorage 加密；plainFallback = 系统安全存储不可用，明文回退（0600） */
+  stored: 'encrypted' | 'plainFallback'
+}
+
 // ---------- cc:vision:* ----------
 
 /** 识图请求（00 文档 §3.1；魔数判 MIME 仅 PNG/JPEG，05 文档 §7） */

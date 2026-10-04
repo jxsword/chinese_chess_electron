@@ -96,3 +96,15 @@
 - 影响: src/shared/ipc/types.ts、src/main/services/llm-proxy.ts、credentials.ts（getRaw）、packages/llm/config.ts、llmPlayer.ts、renderer/llm/llmTransport.ts；M6 cc:vision:readBoard 沿用同方案。
 - 记录时间 / 会话: 2026-10-04（M4 会话）
 - 追记（2026-10-04, M4 会话）: cc:llm:testConnection 载荷同样扩展可选 authSlot（{config, authSlot?}），掩码 Key 场景测试连接经主进程注入；原理与方案 A 一致。
+
+## DR-011 2026-10-04 安全存储不可用时凭据明文回退文件（0600）+ 保存结果如实回报 [状态: 生效]
+- 背景: 实机（WSLg 未运行 Secret Service）上 safeStorage.isEncryptionAvailable()=false，T2.2 的"set 抛错"语义使 LLM 配置完全无法保存（cc:secure:set 连续报"安全存储不可用"），M4 全链路在该类环境不可用；测试连接不受影响（完整 Key 内联鉴权，不落盘）。
+- 选项:
+  - A. 应用层明文回退文件 credentials.fallback.json（0600，仅当前用户可读），get/set/delete/getRaw 双文件贯通（加密优先），set 返回 {stored: 'encrypted'|'plainFallback'}，界面如实提示——优点: 立即可用、不降级有 keyring 的桌面端、行为诚实; 缺点: Key 落盘明文（强度等同 Chromium basic_text）。
+  - B. 启动强制 --password-store=basic——优点: 一行改动走 Chromium 通路; 缺点: 全局降级（有 gnome-keyring 的桌面用户也被降为混淆明文），且 isEncryptionAvailable() 变 true 有误导性。
+  - C. 要求用户安装/启动 gnome-keyring + dbus——优点: 真加密; 缺点: 环境不可控，普通用户无法完成。
+  - D. 维持 set 抛错——优点: 安全语义最严; 缺点: 该类环境功能不可用，弃。
+- 结论: 方案 A。回退文件原子写 + 0600；主进程首次回退打 console.warn；cc:secure:set 返回 SecureSetResult，页面「立即保存」toast 如实标注"已明文保存到本地"。
+- 理由: A 与 B 的落盘强度实际相同（混淆明文），但 A 只影响回退场景且向用户明示；C/D 在目标环境不可行。真实加密路径（safeStorage 可用）行为不变，00 §3.1 的 secure 通道响应本就未锁定，扩展返回值无协议破坏。
+- 影响: src/main/services/credentials.ts、shared/ipc/types.ts（SecureSetResult）、api.ts/preload/mock-api/ipc/store、两个人机 LLM 页保存反馈；07 §4 文档描述需同步（明文回退分支）。
+- 记录时间 / 会话: 2026-10-04（M4 实机会话）
