@@ -52,6 +52,12 @@ export {
   type LlmPlayerOptions
 } from './llmPlayer'
 export {
+  HybridLlmPlayer,
+  type AdvisorEngine,
+  type HybridLlmClientOptions,
+  type HybridLlmPlayerOptions
+} from './hybridPlayer'
+export {
   MAX_TOKENS_V1,
   MAX_TOKENS_V2,
   LLM_PRESETS,
