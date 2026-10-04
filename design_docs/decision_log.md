@@ -84,3 +84,14 @@
 - 理由: 原版 Isolate.run 同样不可中断且体验达标；05 §5 参谋报告 timeLimit ≤5s 使最坏延迟有界。
 - 影响: src/renderer/workers/engineProtocol.ts、engineClient.ts、HumanVsAiPage 的 gameSeq 作废逻辑；M4 HybridLlmPlayer。
 - 记录时间 / 会话: 2026-10-04（M3 会话）
+
+## DR-010 2026-10-04 cc:llm:chat 载荷扩展可选 authSlot，真实 Key 仅主进程注入 [状态: 生效]
+- 背景: 07 §4 铁律"完整 Key 不回渲染层内存"（secure.get 只回掩码 ****+末4位）与 05 §3.1"Authorization: Bearer {apiKey} 由调用方组装"在 Electron 双进程下冲突：渲染层持掩码 Key，拼不出有效鉴权头。
+- 选项:
+  - A. 载荷扩展可选 authSlot 字段——渲染层持完整 Key（用户刚输入未回读）时内联 Bearer 头、省略该字段；持掩码 Key（secure 回读）时带 authSlot，主进程从凭据槽位注入真实 Authorization（CredentialsService.getRaw，仅主进程内部使用）。优点: 协议最小扩展、向后兼容（可省略）、Key 不出主进程、dev:web mock 不受影响; 缺点: 00 §3.1 通道表载荷描述需加注、契约测试同步。
+  - B. 渲染层永不发鉴权头，主进程一律按槽位注入——优点: 渲染层零鉴权知识; 缺点: "刚输入未保存的 Key"无法用于对局（必须先落盘再开局），且槽位与请求的绑定关系仍需载荷字段表达，扩展量相同。
+  - C. secure.get 返回完整 Key 给渲染层——优点: 协议零改动; 缺点: 直接违反 07 §4 与 credentials.ts 安全语义（掩码不泄 Key），弃。
+- 结论: 方案 A。LlmChatRequest 增加可选 authSlot?: SecureSlot；主进程 llm-proxy 经 resolveApiKey(slot) 注入；掩码 Key 但缺槽位时构建请求直接抛错（防裸掩码上外网）。
+- 理由: 兼顾安全铁律与"保存即生效"的使用流；B 的唯一增益（渲染层零鉴权）牺牲即时可用性，而掩码检测（**** 前缀）由 buildChatRequest 统一收口，两态都有测试锁定。
+- 影响: src/shared/ipc/types.ts、src/main/services/llm-proxy.ts、credentials.ts（getRaw）、packages/llm/config.ts、llmPlayer.ts、renderer/llm/llmTransport.ts；M6 cc:vision:readBoard 沿用同方案。
+- 记录时间 / 会话: 2026-10-04（M4 会话）

@@ -42,6 +42,15 @@ export {
   vetoFeedback
 } from './prompt'
 export { extractMove, normalizeReply } from './parser'
+export type { LlmChatHandlers, LlmChatWireRequest, LlmTransport } from './transport'
+export {
+  LLM_CANCELED,
+  LlmChatClient,
+  LlmPlayer,
+  testLlmConnection,
+  type LlmChatClientOptions,
+  type LlmPlayerOptions
+} from './llmPlayer'
 export {
   MAX_TOKENS_V1,
   MAX_TOKENS_V2,

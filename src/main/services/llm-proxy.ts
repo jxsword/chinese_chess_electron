@@ -18,9 +18,19 @@ import {
   SseAssembler,
   annotateModelHint,
   resolveTimeoutSeconds,
+  buildTestConnectionChat,
   LlmApiError
 } from '@packages/llm'
-import type { LlmChatRequest, LlmDelta, SecureSlot } from '@shared/ipc/types'
+import type {
+  LlmChatRequest,
+  LlmDelta,
+  LlmEndpointConfig,
+  LlmTestConnectionResult,
+  SecureSlot
+} from '@shared/ipc/types'
+
+/** 测试连接的请求序号（进程内自增即可，无并发碰撞面）。 */
+let testConnCounter = 0
 
 /** 事件回发接口（ipc/llm.ts 以 webContents.send 实现；测试以收集器实现）。 */
 export interface LlmProxySender {
@@ -195,6 +205,26 @@ export class LlmProxy {
       const message = e instanceof Error ? e.message : String(e)
       fail(`连接中断：${message}`)
     }
+  }
+
+  /**
+   * 配置卡"测试连接"（cc:llm:testConnection）：单次最小流式请求，
+   * 收集结局返回结果（llm_move_source.dart:488-497 语义，主进程执行）。
+   */
+  async testConnection(config: LlmEndpointConfig): Promise<LlmTestConnectionResult> {
+    const built = buildTestConnectionChat(config)
+    const requestId = `test-conn-${Date.now()}-${++testConnCounter}`
+    return await new Promise<LlmTestConnectionResult>((resolve) => {
+      void this.chat(
+        { requestId, url: built.url, headers: built.headers, body: built.body, authSlot: built.authSlot },
+        {
+          sendChunk: () => {},
+          sendDone: () =>
+            resolve({ ok: true, message: `连接成功，模型 ${config.model} 响应正常` }),
+          sendError: (message) => resolve({ ok: false, message: `连接失败：${annotateModelHint(message)}` })
+        }
+      )
+    })
   }
 
   /**

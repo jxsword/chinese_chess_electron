@@ -34,8 +34,17 @@ export class LlmApiError extends Error {
  *   input.messages 的格式校验，报 "Input should be 'user': input.messages ..."；
  * - 翻译模型（qwen-mt-* 等）：不支持流式，报 "Streaming translation is
  *   not supported"——输入虽可多模态，但任务是翻译，不能用于识图。
+ *
+ * Electron 版差异：主进程代理在 HTTP≠200 路径已附加过提示（05 §3.2），
+ * 本函数幂等——消息已含提示时原样返回，避免重复追加。
  */
 export function annotateModelHint(message: string): string {
+  if (
+    message.includes('提示：这是翻译模型') ||
+    message.includes('提示：该模型可能不支持 OpenAI 兼容对话接口')
+  ) {
+    return message
+  }
   const lower = message.toLowerCase()
   if (lower.includes('streaming translation') || lower.includes('translation is not supported')) {
     return (
