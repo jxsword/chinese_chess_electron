@@ -19,3 +19,41 @@ export {
   type LlmGameSettings,
   type LlmSettingsRaw
 } from './settings'
+export {
+  decodeCell,
+  encodeCell,
+  encodeMove
+} from './moveCodes'
+export {
+  annotateMove,
+  annotatedWithBucket,
+  asciiBoard,
+  scoreBucket
+} from './annotation'
+export {
+  historyTextV2,
+  looksLikeRepetition,
+  retryFeedback,
+  retryFeedbackV2,
+  systemV1,
+  systemV2,
+  userV1,
+  userV2,
+  vetoFeedback
+} from './prompt'
+export { extractMove, normalizeReply } from './parser'
+export {
+  MAX_TOKENS_V1,
+  MAX_TOKENS_V2,
+  LLM_PRESETS,
+  LLM_PRESET_CUSTOM,
+  TEST_CONNECTION_SYSTEM,
+  TEST_CONNECTION_USER,
+  VISION_LLM_PRESETS,
+  buildChatRequest,
+  buildTestConnectionChat,
+  isConfigured,
+  requestUrl,
+  type BuiltChatRequest,
+  type LlmPreset
+} from './config'
