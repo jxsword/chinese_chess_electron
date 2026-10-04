@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Board } from '../../src/packages/rules'
+import type { Move } from '../../src/packages/rules'
 import {
   decodeCell,
   HybridLlmPlayer as HybridLlmPlayerCtor,
@@ -26,7 +27,7 @@ import {
   BLUNDER_THRESHOLD_CP,
   MatchRunnerBlunder
 } from '../../src/packages/engine'
-import type { Move, MoveSource, MoveSourceResult } from '../../src/packages/engine'
+import type { MoveSource, MoveSourceResult } from '../../src/packages/engine'
 
 const config: LlmEndpointConfig = {
   baseUrl: 'https://example.com/v1',
@@ -103,16 +104,16 @@ const engineSource = (): MoveSource => ({
   }
 })
 
-/// 脚本化棋手：按固定序列回复（结算路径确定性驱动）。
+/// 脚本化棋手：按固定序列回复（结算路径确定性驱动；脚本项可返回 Promise 模拟卡死）。
 const scriptedSource = (
   displayName: string,
-  script: Array<(board: Board, ply: number) => MoveSourceResult>
+  script: Array<(board: Board, ply: number) => MoveSourceResult | Promise<MoveSourceResult>>
 ): MoveSource => ({
   displayName,
   nextMove: async (board, _history) => {
     const fn = script.shift()
     if (fn === undefined) return { status: 'noLegalMove' }
-    return fn(board, 0)
+    return await fn(board, 0)
   }
 })
 
