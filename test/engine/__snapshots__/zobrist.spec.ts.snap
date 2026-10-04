@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Zobrist 哈希（DR-019） > 初始局面键对跨进程确定（快照） 1`] = `
+[
+  1734646178,
+  2118439626,
+]
+`;

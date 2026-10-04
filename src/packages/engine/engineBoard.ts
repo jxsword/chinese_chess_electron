@@ -14,6 +14,7 @@
  */
 import { parseBoardFen, parseTurnFen } from '../rules/fen'
 import type { Move, Piece, PieceKind, Position } from '../rules'
+import { ZOBRIST_HI, ZOBRIST_LO, TURN_HI, TURN_LO, rebuildZobrist } from './zobrist'
 
 /** kind 编码（1..7，见文件头注释）。 */
 const KING = 1
@@ -169,6 +170,9 @@ export class EngineBoard {
   /** [红帅 index, 黑将 index]，无王为 -1（isCheck 对齐 Dart：无王返回 false）。 */
   private readonly kings = new Int8Array(2)
   isRedTurn: boolean
+  /** Zobrist 增量键（DR-019）：fromFen 全量重建，apply/undo 对称异或维护。 */
+  private hashLo = 0
+  private hashHi = 0
 
   private constructor() {
     this.isRedTurn = true
@@ -189,7 +193,17 @@ export class EngineBoard {
       }
     }
     b.isRedTurn = parseTurnFen(fen)
+    ;[b.hashLo, b.hashHi] = rebuildZobrist(b.data, b.isRedTurn)
     return b
+  }
+
+  /** 当前局面 Zobrist 键（DR-019，低 32 位 / 高 32 位）。 */
+  get zobristLo(): number {
+    return this.hashLo
+  }
+
+  get zobristHi(): number {
+    return this.hashHi
   }
 
   /** 某格棋子编码（0 = 空）。 */
@@ -200,6 +214,7 @@ export class EngineBoard {
   /**
    * 执行走子（不做合法性校验），返回被吃子编码（0 = 空）。
    * 与 rules.Board.applyMove 一致：翻转轮走方。
+   * Zobrist 增量：mover@from 出、captured@to 出（若有）、mover@to 入、翻轮走方键。
    */
   applyMove(from: number, to: number): number {
     const d = this.data
@@ -209,11 +224,32 @@ export class EngineBoard {
     d[from] = 0
     if (mover === KING) this.kings[0] = to
     else if (mover === -KING) this.kings[1] = to
+    let lo = this.hashLo
+    let hi = this.hashHi
+    let i = (mover + 7) * 90 + from
+    lo ^= ZOBRIST_LO[i]!
+    hi ^= ZOBRIST_HI[i]!
+    if (captured !== 0) {
+      i = (captured + 7) * 90 + to
+      lo ^= ZOBRIST_LO[i]!
+      hi ^= ZOBRIST_HI[i]!
+    }
+    i = (mover + 7) * 90 + to
+    lo ^= ZOBRIST_LO[i]!
+    hi ^= ZOBRIST_HI[i]!
+    lo ^= TURN_LO[0]!
+    hi ^= TURN_HI[0]!
+    this.hashLo = lo
+    this.hashHi = hi
     this.isRedTurn = !this.isRedTurn
     return captured
   }
 
-  /** 撤销 applyMove（captured 为 applyMove 返回值）；翻转回轮走方。 */
+  /**
+   * 撤销 applyMove（captured 为 applyMove 返回值）；翻转回轮走方。
+   * Zobrist 逆序同式异或（异或自逆）：mover@to 出、mover@from 入、
+   * captured@to 入（若有）、翻轮走方键——与 applyMove 的异或集合相同，净效果为零。
+   */
   undoMove(from: number, to: number, captured: number): void {
     const d = this.data
     const mover = d[to]
@@ -221,6 +257,23 @@ export class EngineBoard {
     d[to] = captured
     if (mover === KING) this.kings[0] = from
     else if (mover === -KING) this.kings[1] = from
+    let lo = this.hashLo
+    let hi = this.hashHi
+    let i = (mover + 7) * 90 + to
+    lo ^= ZOBRIST_LO[i]!
+    hi ^= ZOBRIST_HI[i]!
+    i = (mover + 7) * 90 + from
+    lo ^= ZOBRIST_LO[i]!
+    hi ^= ZOBRIST_HI[i]!
+    if (captured !== 0) {
+      i = (captured + 7) * 90 + to
+      lo ^= ZOBRIST_LO[i]!
+      hi ^= ZOBRIST_HI[i]!
+    }
+    lo ^= TURN_LO[0]!
+    hi ^= TURN_HI[0]!
+    this.hashLo = lo
+    this.hashHi = hi
     this.isRedTurn = !this.isRedTurn
   }
 
