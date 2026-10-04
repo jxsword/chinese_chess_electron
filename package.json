@@ -1,6 +1,6 @@
 {
   "name": "chinese_chess_electron",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "中国象棋桌面应用——Flutter 版 ChineseChessUltra 的 Electron 全栈重写",
   "private": true,
   "author": {
