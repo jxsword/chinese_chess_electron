@@ -45,6 +45,15 @@ export {
 } from './prompt'
 export { extractMove, normalizeReply } from './parser'
 export {
+  SOLVE_ASSIST_SYSTEM,
+  parseSolveProposal,
+  proposeSolveFirstMove,
+  solveAssistUser,
+  type SolveAssistOptions,
+  type SolveProposal,
+  type SolveProposeResult
+} from './solveAssist'
+export {
   VISION_MAX_ATTEMPTS,
   VISION_MAX_TOKENS,
   VISION_SYSTEM_PROMPT,

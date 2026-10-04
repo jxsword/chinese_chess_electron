@@ -33,8 +33,11 @@ import {
   validateStudioPosition
 } from './studioValidate'
 import { SolverClient } from '@renderer/workers/solverClient'
+import { createIpcLlmTransport } from '@renderer/llm/llmTransport'
 import { BoardViewStatic } from '@renderer/features/board/BoardViewStatic'
 import { api } from '@renderer/ipc/client'
+import { AssistantConfigDialog } from './AssistantConfigDialog'
+import { runSolveAssist } from './llmAssist'
 
 const SOLVE_TIME_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
   { label: '10 秒', ms: 10_000 },
@@ -55,6 +58,8 @@ interface SolveSheet {
   result: SolveResult
   /** 入库返回的棋谱 id；null = 保存失败 */
   recordId: number | null
+  /** LLM 求解辅助注释（未开启辅助时为 null） */
+  llmNote: string | null
 }
 
 const emptyGrid = (): BoardGrid => Array.from({ length: 10 }, () => Array<Piece | null>(9).fill(null))
@@ -115,9 +120,13 @@ export function EndgameStudioPage(): React.JSX.Element {
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [timeLimitMs, setTimeLimitMs] = useState(30_000)
   const [maxPlies, setMaxPlies] = useState(9)
+  const [useLlm, setUseLlm] = useState(false)
   const [solving, setSolving] = useState(false)
   const [solveElapsed, setSolveElapsed] = useState(0)
   const [sheet, setSheet] = useState<SolveSheet | null>(null)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+
+  const llmTransportRef = useRef<ReturnType<typeof createIpcLlmTransport> | null>(null)
 
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -302,7 +311,7 @@ export function EndgameStudioPage(): React.JSX.Element {
     setOptionsOpen(true)
   }
 
-  const persistRecord = async (fen: string, result: SolveResult): Promise<number | null> => {
+  const persistRecord = async (fen: string, result: SolveResult, llmNote: string | null): Promise<number | null> => {
     try {
       const solutions = result.solutions.map((s) =>
         s.moves
@@ -317,7 +326,7 @@ export function EndgameStudioPage(): React.JSX.Element {
         result: null,
         solveStatus: result.status,
         solutions,
-        llmNote: null,
+        llmNote,
         note: null,
         createdAt: Date.now()
       })
@@ -334,10 +343,25 @@ export function EndgameStudioPage(): React.JSX.Element {
     if (solveTimerRef.current !== null) clearInterval(solveTimerRef.current)
     solveTimerRef.current = setInterval(() => setSolveElapsed((v) => v + 0.2), 200)
     try {
+      // 大模型辅助（Hybrid）：先提议（进度弹窗期间进行），求解器验证后写入注释。
+      let llmNote: string | null = null
+      if (useLlm) {
+        const config = await api.secure.get('llm_config_assistant')
+        if (llmTransportRef.current === null) llmTransportRef.current = createIpcLlmTransport()
+        const solver = solverRef.current
+        llmNote = await runSolveAssist(fen, { timeLimitMs, maxPlies }, (f, move) => {
+          if (solver === null) return Promise.resolve(false)
+          return solver.isWinningFirstMove(f, move, { plies: maxPlies, timeLimitMs })
+        }, {
+          config,
+          transport: llmTransportRef.current,
+          authSlot: 'llm_config_assistant'
+        })
+      }
       const result = await solverRef.current?.solve(fen, { timeLimitMs, maxPlies })
       if (result === undefined) return // 页面已卸载
-      const recordId = await persistRecord(fen, result)
-      setSheet({ fen, result, recordId })
+      const recordId = await persistRecord(fen, result, llmNote)
+      setSheet({ fen, result, recordId, llmNote })
     } catch (e) {
       showToast(`求解失败：${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -500,6 +524,9 @@ export function EndgameStudioPage(): React.JSX.Element {
           返回
         </button>
         <h2>残局工作室</h2>
+        <button type="button" className="cc-btn" onClick={() => setAssistantOpen(true)}>
+          研究助手模型配置
+        </button>
       </header>
       <div className="cc-game-body" style={{ flexDirection: 'column', gap: 8, padding: 12 }}>
         {boardArea}
@@ -562,6 +589,20 @@ export function EndgameStudioPage(): React.JSX.Element {
                   ))}
                 </select>
               </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={useLlm}
+                  onChange={(e) => setUseLlm(e.target.checked)}
+                  data-testid="solve-llm-switch"
+                />
+                <span>
+                  大模型辅助
+                  <span style={{ display: 'block', fontSize: 12 }}>
+                    模型提议首着，求解器验证后写入注释
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="cc-dialog-actions">
               <button type="button" className="cc-btn" onClick={() => setOptionsOpen(false)}>
@@ -585,6 +626,7 @@ export function EndgameStudioPage(): React.JSX.Element {
       )}
 
       {sheet !== null && <SolveResultSheet sheet={sheet} redTurn={redTurn} onClose={() => setSheet(null)} />}
+      {assistantOpen && <AssistantConfigDialog onClose={() => setAssistantOpen(false)} />}
       {toast !== null && (
         <div className="cc-snackbar" role="status">
           {toast}
@@ -627,6 +669,11 @@ function SolveResultSheet({
           <div style={{ fontSize: 12 }}>
             用时 {(result.elapsed / 1000).toFixed(1)}s，已保存到棋谱库{recordId === null ? '失败' : ''}
           </div>
+          {sheet.llmNote !== null && (
+            <div style={{ fontSize: 12, marginTop: 8 }} data-testid="solve-llm-note">
+              {sheet.llmNote}
+            </div>
+          )}
           {result.status === 'solved' && result.solutions.length === 0 && (
             <div style={{ marginTop: 8 }}>对方已被将死/困毙，无需再走。</div>
           )}

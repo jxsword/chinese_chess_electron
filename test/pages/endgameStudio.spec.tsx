@@ -40,6 +40,11 @@ vi.mock('@renderer/workers/solverClient', () => ({
   }
 }))
 
+const { runSolveAssistMock } = vi.hoisted(() => ({ runSolveAssistMock: vi.fn() }))
+vi.mock('@renderer/features/studio/llmAssist', () => ({
+  runSolveAssist: runSolveAssistMock
+}))
+
 import { EndgameStudioPage } from '@renderer/features/studio/EndgameStudioPage'
 
 const FEN_A = '3k5/9/9/9/R8/8R/9/9/9/4K4 w - - 0 1'
@@ -225,6 +230,46 @@ describe('求解流程与三种结论自动入库（TC-SOL / 04 §7 状态机）
     fireEvent.click(screen.getByText('开始求解'))
     await waitFor(() => expect(screen.getByTestId('solve-result-sheet')).toBeTruthy())
     expect(screen.getByText(/对方已被将死\/困毙，无需再走。/)).toBeTruthy()
+  })
+})
+
+describe('大模型辅助注释（TC-SOL-008，05 §6 Hybrid）', () => {
+  it('⑫ 验证通过 → BottomSheet 显示注释 + 入库 llmNote 同步', async () => {
+    runSolveAssistMock.mockResolvedValue('大模型首选 a4-d4（已验证为必胜着法）；思路: 平车闷杀')
+    solveMock.mockResolvedValue(
+      solvedResult({ solutions: [{ moves: [{ from: { col: 0, row: 4 }, to: { col: 3, row: 4 } }] }] })
+    )
+    renderPage()
+    loadFen(FEN_A)
+    fireEvent.click(screen.getByText('AI 求破解'))
+    fireEvent.click(screen.getByTestId('solve-llm-switch'))
+    fireEvent.click(screen.getByText('开始求解'))
+    await waitFor(() => expect(screen.getByTestId('solve-result-sheet')).toBeTruthy())
+    expect(screen.getByTestId('solve-llm-note').textContent).toContain('已验证为必胜着法')
+    await waitFor(() => expect(fakeApi.db.recordsSave).toHaveBeenCalledTimes(1))
+    expect((fakeApi.db.recordsSave.mock.calls[0]![0] as { llmNote: string }).llmNote).toContain('已验证为必胜着法')
+  })
+
+  it('⑬ 未通过验证 → 注明"已忽略"；未开启辅助时 llmNote 为 null', async () => {
+    runSolveAssistMock.mockResolvedValue('大模型首选 a4-d4 未通过求解器验证，已忽略')
+    solveMock.mockResolvedValue(solvedResult({ solutions: [] }))
+    renderPage()
+    loadFen(FEN_A)
+    fireEvent.click(screen.getByText('AI 求破解'))
+    fireEvent.click(screen.getByTestId('solve-llm-switch'))
+    fireEvent.click(screen.getByText('开始求解'))
+    await waitFor(() => expect(screen.getByTestId('solve-llm-note')).toBeTruthy())
+    expect(screen.getByTestId('solve-llm-note').textContent).toContain('未通过求解器验证，已忽略')
+    fireEvent.click(screen.getByTestId('solve-result-close'))
+
+    // 不勾选大模型辅助：不调用 assist，llmNote=null。
+    solveMock.mockResolvedValue(solvedResult({ solutions: [] }))
+    fireEvent.click(screen.getByText('AI 求破解'))
+    fireEvent.click(screen.getByTestId('solve-llm-switch')) // 关闭开关
+    fireEvent.click(screen.getByText('开始求解'))
+    await waitFor(() => expect(screen.getAllByTestId('solve-result-sheet')).toHaveLength(1))
+    expect(screen.queryByTestId('solve-llm-note')).toBeNull()
+    expect(runSolveAssistMock).toHaveBeenCalledTimes(1)
   })
 })
 

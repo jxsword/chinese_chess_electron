@@ -16,6 +16,8 @@ export interface LlmConfigCardProps {
   config: LlmEndpointConfig
   /** 配置变化（不落盘；落盘由页面防抖保存） */
   onChange: (config: LlmEndpointConfig) => void
+  /** 预设清单（缺省对话模型预设；研究助手/识图传 VISION_LLM_PRESETS） */
+  presets?: readonly LlmPreset[]
   /**
    * 测试连接的生效配置（DR-014 镜像）：本卡配置全空、对局时跟随另一方时，
    * 传另一方配置与槽位——"测试连接"测的是真正会用于对局的配置。
@@ -24,14 +26,14 @@ export interface LlmConfigCardProps {
 }
 
 /** 选择预设：非"自定义"即回填端点与示例模型 ID */
-function presetFor(config: LlmEndpointConfig): LlmPreset {
-  const hit = LLM_PRESETS.find(
+function presetFor(config: LlmEndpointConfig, presets: readonly LlmPreset[]): LlmPreset {
+  const hit = presets.find(
     (p) => p !== LLM_PRESET_CUSTOM && p.baseUrl === config.baseUrl.trim()
   )
   return hit ?? LLM_PRESET_CUSTOM
 }
 
-export function LlmConfigCard({ title, slot, config, onChange, testOverride }: LlmConfigCardProps): React.JSX.Element {
+export function LlmConfigCard({ title, slot, config, onChange, presets = LLM_PRESETS, testOverride }: LlmConfigCardProps): React.JSX.Element {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
 
@@ -52,14 +54,14 @@ export function LlmConfigCard({ title, slot, config, onChange, testOverride }: L
         <span>端点预设</span>
         <select
           aria-label={`${title}端点预设`}
-          value={presetFor(config).name}
+          value={presetFor(config, presets).name}
           onChange={(e) => {
-            const preset = LLM_PRESETS.find((p) => p.name === e.target.value)
+            const preset = presets.find((p) => p.name === e.target.value)
             if (preset === undefined || preset === LLM_PRESET_CUSTOM) return
             onChange({ ...config, baseUrl: preset.baseUrl, model: preset.exampleModel })
           }}
         >
-          {LLM_PRESETS.map((p) => (
+          {presets.map((p) => (
             <option key={p.name} value={p.name}>
               {p.name}
             </option>
