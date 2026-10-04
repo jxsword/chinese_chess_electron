@@ -21,6 +21,15 @@ import { LLM_SETTING_KEYS, resolveTimeoutSeconds } from '@packages/llm'
 // 路线图风险 R7）；棋盘 UI 无需 GPU 加速，恒用软件渲染消除该类故障。
 app.disableHardwareAcceleration()
 
+// Linux 下 Chromium 检测到 xdg-desktop-portal 时，showOpenDialog/saveFile 会委托
+// portal 进程弹窗。WSLg 中 portal 的对话框渲染在其自身 Wayland 连接上，输入路由
+// 失效——弹窗可见但所有按钮/条目不可点击（M5 实测复现，dbus-monitor 验证：
+// 默认环境弹窗走 org.freedesktop.portal.FileChooser；强制 0 后归零，对话框回到
+// 本进程 GTK，与主窗口同一输入路径）。须在 app ready / GTK 初始化前设置。
+if (process.platform === 'linux') {
+  process.env.GTK_USE_PORTAL = '0'
+}
+
 /** 单窗口生命周期事件广播（best-effort：send 即返回，不阻塞退出） */
 function sendLifecycle(win: BrowserWindow, phase: AppLifecyclePhase): void {
   if (!win.isDestroyed()) win.webContents.send(CC.app.lifecycle, { phase })
