@@ -14,6 +14,7 @@
  *   全部成功后原子替换目标目录，失败整体清理，不残留半成品；
  * - 无断点续传（失败/取消整体重来），与原版语义一致。
  */
+import { createHash } from 'crypto'
 import { createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, closeSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, sep } from 'path'
@@ -23,6 +24,11 @@ import { readZipEntries, ZipFormatError } from './corpusZip'
 export const CONNECT_TIMEOUT_MS = 15_000
 /** 响应流块间超时：超过该时长无新数据即判定下载停滞（corpus_downloader.dart:51）。 */
 export const CHUNK_TIMEOUT_MS = 30_000
+/** 下载临时 zip 的确定性路径（URL SHA-1 命名，Range 续传依赖同名可寻）。 */
+export function corpusTempZipPath(url: string): string {
+  return join(tmpdir(), `corpus-download-${createHash('sha1').update(url).digest('hex')}.zip`)
+}
+
 /** 语料 zip 合法大小下限/上限（当前包约 45.8MB，留足余量防炸弹/空文件）。 */
 export const MIN_ZIP_BYTES = 1 << 20
 export const MAX_ZIP_BYTES = 512 << 20
@@ -202,25 +208,52 @@ function throwIfCancelled(isCancelled?: () => boolean): void {
 /**
  * 下载 zip 到系统临时目录；手动跟随重定向并逐跳校验（corpus_downloader.dart:144-211）。
  * 块间停滞超时经 AbortController 实现（主进程侧计时，00 文档 TIMER 职责铁律）。
+ *
+ * Range 续传（06 §5 Electron 增强项）：临时文件名对 URL 确定性命名（SHA-1），
+ * 中断残留的半成品与 ETag sidecar 配对；重试时带 `If-Range: <etag>` + `Range`，
+ * 服务器资源未变则 206 续写，否则按 200 整体重下（失败安全保留原语义）。
  */
-async function downloadZip(
+export async function downloadZip(
   url: string,
   onProgress?: (received: number, total: number) => void,
-  isCancelled?: () => boolean
+  isCancelled?: () => boolean,
+  /** 供测试注入（本地 http 服务器）；生产恒为 isDownloadUrlAllowed */
+  urlValidator: (candidate: string) => boolean = isDownloadUrlAllowed
 ): Promise<string> {
+  // 续传状态：半成品 + ETag sidecar（仅服务器返回强 ETag 时启用）。
+  const tempFile = corpusTempZipPath(url)
+  const etagFile = `${tempFile}.etag`
+  let resumeOffset = 0
+  let resumeEtag: string | null = null
+  if (existsSync(etagFile) && existsSync(tempFile)) {
+    resumeEtag = readFileSync(etagFile, 'utf8')
+    resumeOffset = statSync(tempFile).size
+  } else {
+    try {
+      if (existsSync(tempFile)) rmSync(tempFile)
+    } catch {
+      // 残留清理失败：200 路径会整体覆盖
+    }
+  }
+
   let current = url
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
     throwIfCancelled(isCancelled)
-    if (!isDownloadUrlAllowed(current)) {
+    if (!urlValidator(current)) {
       throw new Error('重定向地址不合法（仅允许 https 公网地址）')
     }
     const controller = new AbortController()
     let stalled = false
     // 连接超时：15s 内未收到响应头即中止。
     const connectTimer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
+    const headers: Record<string, string> = {}
+    if (resumeEtag !== null && resumeOffset > 0) {
+      headers['If-Range'] = resumeEtag
+      headers.Range = `bytes=${resumeOffset}-`
+    }
     let response: globalThis.Response
     try {
-      response = await fetch(current, { redirect: 'manual', signal: controller.signal })
+      response = await fetch(current, { redirect: 'manual', signal: controller.signal, headers })
     } catch {
       clearTimeout(connectTimer)
       throw new Error('连接超时（15 秒无响应）')
@@ -234,14 +267,34 @@ async function downloadZip(
       void response.body?.cancel()
       continue
     }
-    if (response.status !== 200) {
+    // 206 = 续传命中；200 = 服务器忽略 Range 或资源已变（If-Range 未通过）→ 整体重下。
+    if (response.status !== 200 && response.status !== 206) {
       throw new Error(`下载失败：HTTP ${response.status}`)
+    }
+    const resuming = response.status === 206 && resumeOffset > 0
+    if (!resuming) {
+      resumeOffset = 0
+      try {
+        if (existsSync(tempFile)) rmSync(tempFile)
+      } catch {
+        // 旧半成品无法清理：写入模式会覆盖
+      }
+    }
+    // 服务器返回新 ETag 且本次为整段下载：登记 sidecar 供中断后续传。
+    const etag = response.headers.get('etag')
+    if (etag !== null && !resuming) {
+      try {
+        writeFileSync(etagFile, etag)
+        resumeEtag = etag
+      } catch {
+        // sidecar 写失败：仅失去续传能力
+      }
     }
 
     const totalHeader = response.headers.get('content-length')
-    const total = totalHeader === null ? -1 : Number.parseInt(totalHeader, 10)
-    const tempFile = join(tmpdir(), `corpus-download-${Date.now()}.zip`)
-    const sink = createWriteStream(tempFile)
+    const contentLength = totalHeader === null ? -1 : Number.parseInt(totalHeader, 10)
+    const total = resuming && contentLength >= 0 ? resumeOffset + contentLength : contentLength
+    const sink = createWriteStream(tempFile, { flags: resuming ? 'a' : 'w' })
     let received = 0
     try {
       const reader = response.body?.getReader()
@@ -264,7 +317,7 @@ async function downloadZip(
         if (value !== undefined) {
           received += value.byteLength
           sink.write(Buffer.from(value))
-          onProgress?.(received, total)
+          onProgress?.(resumeOffset + received, total)
         }
       }
       if (chunkTimer !== null) clearTimeout(chunkTimer)
@@ -272,12 +325,21 @@ async function downloadZip(
         sink.on('error', reject)
         sink.end(resolve)
       })
+      // 下载完成：不再续传（本次将完整消费该 zip），清 sidecar。
+      try {
+        if (existsSync(etagFile)) rmSync(etagFile)
+      } catch {
+        // 清理失败无碍结果
+      }
     } catch (e) {
       sink.close()
-      try {
-        if (existsSync(tempFile)) rmSync(tempFile)
-      } catch {
-        // 清理失败不掩盖主流程
+      // 中断：保留半成品 + sidecar（若服务器未给 ETag 则无从续传，清残留）。
+      if (resumeEtag === null) {
+        try {
+          if (existsSync(tempFile)) rmSync(tempFile)
+        } catch {
+          // 清理失败不掩盖主流程
+        }
       }
       if (stalled) throw new Error('下载停滞（30 秒无新数据）', { cause: e })
       throw e instanceof Error ? e : new Error(String(e), { cause: e })

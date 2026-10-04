@@ -1,9 +1,12 @@
 /** 下载器等价用例集（test/features/puzzle/model/corpus_downloader_test.dart 11 条，06 文档 §5） */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync, statSync } from 'fs'
+import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  corpusTempZipPath,
+  downloadZip,
   extractZip,
   extractZipAtomic,
   isDownloadUrlAllowed,
@@ -241,5 +244,117 @@ describe('verifyZipIntegrity（魔数 + 大小区间）', () => {
     const f = join(tmp, 'small.zip')
     writeFileSync(f, Buffer.from([0x50, 0x4b, 0x03, 0x04]))
     expect(() => verifyZipIntegrity(f)).toThrow(/大小异常/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Range 续传（06 §5 Electron 增强项：If-Range + Range，失败安全回退整体重下）
+// ---------------------------------------------------------------------------
+
+const ETAG = '"corpus-etag-v1"'
+
+/** 支持单段 Range/If-Range 的最小静态服务器；记录收到的请求头。 */
+function serveZip(
+  body: Buffer,
+  mode: 'range' | 'full'
+): Promise<{ server: ReturnType<typeof createServer>; url: string; seenHeaders: Array<Record<string, string | undefined>>; close: () => Promise<void> }> {
+  return new Promise((resolve) => {
+    const seenHeaders: Array<Record<string, string | undefined>> = []
+    const handler = (req: IncomingMessage, res: ServerResponse): void => {
+      const headerText = (name: string): string | undefined => {
+        const v = req.headers[name]
+        return Array.isArray(v) ? v[0] : v
+      }
+      seenHeaders.push({ 'if-range': headerText('if-range'), range: headerText('range') })
+      const range = req.headers.range
+      const match = mode === 'range' && range !== undefined ? /bytes=(\d+)-/.exec(range) : null
+      if (match !== null) {
+        const start = Number.parseInt(match[1], 10)
+        const slice = body.subarray(start)
+        res.writeHead(206, {
+          'content-length': String(slice.length),
+          'content-range': `bytes ${start}-${body.length - 1}/${body.length}`,
+          etag: ETAG
+        })
+        res.end(slice)
+        return
+      }
+      res.writeHead(200, { 'content-length': String(body.length), etag: ETAG })
+      res.end(body)
+    }
+    const server = createServer(handler)
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address()
+      const port = typeof addr === 'object' && addr !== null ? addr.port : 0
+      resolve({
+        server,
+        url: `http://127.0.0.1:${port}/qp-corpus.zip`,
+        seenHeaders,
+        close: () => new Promise((r) => server.close(() => r()))
+      })
+    })
+  })
+}
+
+describe('downloadZip：Range 续传', () => {
+  it('半成品 + ETag 匹配：206 续写剩余字节，完成后清 sidecar', async () => {
+    const zip = buildTestZip([
+      { name: 'XQF-象棋谱大全/a.xqf', content: bytes('data-a') },
+      { name: 'README.md', content: bytes('readme') }
+    ])
+    const { url, seenHeaders, close } = await serveZip(zip, 'range')
+    try {
+      // 模拟上次中断：半成品（前 10 字节）+ sidecar。
+      const tempFile = corpusTempZipPath(url)
+      writeFileSync(tempFile, zip.subarray(0, 10))
+      writeFileSync(`${tempFile}.etag`, ETAG)
+
+      const progress: Array<[number, number]> = []
+      const out = await downloadZip(
+        url,
+        (received, total) => progress.push([received, total]),
+        undefined,
+        () => true // 测试本地 http；生产恒为 SSRF 校验
+      )
+      expect(existsSync(out)).toBe(true)
+      expect(existsSync(`${out}.etag`)).toBe(false) // 完成后清 sidecar
+      expect(existsSync(out.replace('.zip', '.zip.etag'))).toBe(false)
+      // 服务器收到了 If-Range + Range 头（ETag 一致性校验）。
+      expect(seenHeaders[0]['if-range']).toBe(ETAG)
+      expect(seenHeaders[0].range).toBe('bytes=10-')
+      // 续传后完整文件可解压（字节齐全）。
+      const target = `${out}.extract-check`
+      const result = extractZip(out, target)
+      expect(result.extracted).toBe(2)
+      rmSync(target, { recursive: true, force: true })
+      // 进度总量含已下载前缀。
+      expect(progress[progress.length - 1]?.[0]).toBe(zip.length)
+      expect(progress[progress.length - 1]?.[1]).toBe(zip.length)
+      rmSync(out, { force: true })
+    } finally {
+      await close()
+    }
+  })
+
+  it('服务器忽略 Range（资源变更）：200 整体重下，不残留半成品', async () => {
+    const zip = buildTestZip([{ name: 'b.xqf', content: bytes('data-b') }])
+    const { url, seenHeaders, close } = await serveZip(zip, 'full')
+    try {
+      const tempFile = corpusTempZipPath(url)
+      writeFileSync(tempFile, Buffer.alloc(10, 0xab)) // 陈旧半成品
+      writeFileSync(`${tempFile}.etag`, '"old-etag"')
+
+      const progress: Array<[number, number]> = []
+      const out = await downloadZip(url, (r, t) => progress.push([r, t]), undefined, () => true)
+      // 若服务器带 If-Range 仍回 200 → 整体覆盖。
+      void seenHeaders
+      const result = extractZip(out, `${out}.extract-check`)
+      expect(result.extracted).toBe(1)
+      rmSync(`${out}.extract-check`, { recursive: true, force: true })
+      expect(progress[progress.length - 1]?.[1]).toBe(zip.length)
+      rmSync(out, { force: true })
+    } finally {
+      await close()
+    }
   })
 })
